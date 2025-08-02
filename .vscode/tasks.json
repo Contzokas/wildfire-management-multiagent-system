@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Compile JADE agents with GUI",
+      "type": "shell",
+      "command": "javac",
+      "args": [
+        "-encoding",
+        "UTF-8",
+        "-cp",
+        "lib/jade.jar",
+        "-d",
+        "bin",
+        "src/gui/*.java",
+        "src/agents/*.java",
+        "src/MainContainer.java"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Run JADE Full 5x5 Grid with All Resources",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "chcp 65001 && java -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar jade.Boot -gui -agents firecontrol:agents.FireControlAgent;weather:agents.WeatherAgent;tree1:agents.TreeAgent(1,1);tree2:agents.TreeAgent(1,2);tree3:agents.TreeAgent(1,3);tree4:agents.TreeAgent(1,4);tree5:agents.TreeAgent(1,5);tree6:agents.TreeAgent(2,1);tree7:agents.TreeAgent(2,2);tree8:agents.TreeAgent(2,3);tree9:agents.TreeAgent(2,4);tree10:agents.TreeAgent(2,5);tree11:agents.TreeAgent(3,1);tree12:agents.TreeAgent(3,2);tree13:agents.TreeAgent(3,3);tree14:agents.TreeAgent(3,4);tree15:agents.TreeAgent(3,5);tree16:agents.TreeAgent(4,1);tree17:agents.TreeAgent(4,2);tree18:agents.TreeAgent(4,3);tree19:agents.TreeAgent(4,4);tree20:agents.TreeAgent(4,5);tree21:agents.TreeAgent(5,1);tree22:agents.TreeAgent(5,2);tree23:agents.TreeAgent(5,3);tree24:agents.TreeAgent(5,4);tree25:agents.TreeAgent(5,5);truck1:agents.FireTruckAgent;truck2:agents.FireTruckAgent;truck3:agents.FireTruckAgent;truck4:agents.FireTruckAgent;aircraft1:agents.AircraftAgent;aircraft2:agents.AircraftAgent;helicopter1:agents.HelicopterAgent;crew1:agents.GroundCrewAgent(suppression);crew2:agents.GroundCrewAgent(prevention);crew3:agents.GroundCrewAgent(mop-up);crew4:agents.GroundCrewAgent(suppression);crew5:agents.GroundCrewAgent(suppression);crew6:agents.GroundCrewAgent(prevention);emergency1:agents.EmergencyResponseAgent;fire1:agents.FireAgent(2,2)"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
+      "label": "Run JADE Minimal (Fast Test)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "chcp 65001 && java -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar jade.Boot -gui -agents firecontrol:agents.FireControlAgent;weather:agents.WeatherAgent;fire1:agents.FireAgent(2,3);truck1:agents.FireTruckAgent;aircraft1:agents.AircraftAgent;helicopter1:agents.HelicopterAgent;crew1:agents.GroundCrewAgent(suppression)"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
+      "label": "Run JADE Demo with Multiple Fires",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "chcp 65001 && java -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar jade.Boot -gui -agents firecontrol:agents.FireControlAgent;weather:agents.WeatherAgent;tree1:agents.TreeAgent(1,1);tree2:agents.TreeAgent(1,2);tree3:agents.TreeAgent(1,3);tree4:agents.TreeAgent(2,1);tree5:agents.TreeAgent(2,2);tree6:agents.TreeAgent(2,3);tree7:agents.TreeAgent(3,1);tree8:agents.TreeAgent(3,2);tree9:agents.TreeAgent(3,3);tree10:agents.TreeAgent(4,1);tree11:agents.TreeAgent(4,2);tree12:agents.TreeAgent(5,1);truck1:agents.FireTruckAgent;truck2:agents.FireTruckAgent;truck3:agents.FireTruckAgent;truck4:agents.FireTruckAgent;aircraft1:agents.AircraftAgent;aircraft2:agents.AircraftAgent;helicopter1:agents.HelicopterAgent;crew1:agents.GroundCrewAgent(suppression);crew2:agents.GroundCrewAgent(prevention);crew3:agents.GroundCrewAgent(mop-up);crew4:agents.GroundCrewAgent(suppression);crew5:agents.GroundCrewAgent(suppression);crew6:agents.GroundCrewAgent(prevention);emergency1:agents.EmergencyResponseAgent;fire1:agents.FireAgent(1,1);fire2:agents.FireAgent(3,3);fire3:agents.FireAgent(5,5)"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    }
+  ]
+}
