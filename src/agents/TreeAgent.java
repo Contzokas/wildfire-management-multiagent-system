@@ -16,6 +16,7 @@ public class TreeAgent extends Agent {
     private int fireIntensity = 0;
     private double windEffect = 1.0;
     private int temperature = 25; // θερμοκρασία
+    private static final int GRID_SIZE = 150; // Updated grid size
     
     @Override
     protected void setup() {
@@ -61,7 +62,9 @@ public class TreeAgent extends Agent {
                     burnTime++;
                     fireIntensity = Math.min(10, fireIntensity + 1);
                     
-                    System.out.println(getLocalName() + ": Καίγεται για " + burnTime + " δευτερόλεπτα, ένταση: " + fireIntensity);
+                    if (burnTime % 10 == 0) { // Reduce log frequency for large grid
+                        System.out.println(getLocalName() + ": Καίγεται για " + burnTime + " δευτερόλεπτα, ένταση: " + fireIntensity);
+                    }
                     
                     // Διάδοση σε γειτονικά δέντρα
                     if (burnTime % 3 == 0) {
@@ -92,8 +95,6 @@ public class TreeAgent extends Agent {
                 System.out.println(getLocalName() + ": Το δέντρο έπιασε φωτιά! (Πιθανότητα: " + 
                                  String.format("%.1f", ignitionChance * 100) + "%)");
                 notifyFireControl();
-            } else {
-                System.out.println(getLocalName() + ": Αντιστάθηκε στη φωτιά (Υγρασία: " + humidity + "%)");
             }
             
         } else if (content.equals("EXTINGUISH") && burning) {
@@ -102,8 +103,6 @@ public class TreeAgent extends Agent {
                 fireIntensity = 0;
                 burnTime = 0;
                 System.out.println(getLocalName() + ": Η φωτιά σβήστηκε επιτυχώς!");
-            } else {
-                System.out.println(getLocalName() + ": Η κατάσβεση απέτυχε, η φωτιά συνεχίζει!");
             }
             
         } else if (content.startsWith("WEATHER_UPDATE")) {
@@ -136,8 +135,8 @@ public class TreeAgent extends Agent {
                 if (dx == 0 && dy == 0) continue;
                 
                 int nx = x + dx, ny = y + dy;
-                String neighborName = findTreeAtPosition(nx, ny);
-                if (neighborName != null) {
+                if (nx >= 1 && nx <= GRID_SIZE && ny >= 1 && ny <= GRID_SIZE) {
+                    String neighborName = "tree_" + nx + "_" + ny;
                     msg.addReceiver(new jade.core.AID(neighborName, jade.core.AID.ISLOCALNAME));
                 }
             }
@@ -150,7 +149,7 @@ public class TreeAgent extends Agent {
     
     private void notifyFireControl() {
         ACLMessage msg = new ACLMessage(ACLMessage.INFORM);
-        msg.setContent("FIRE_SPREAD from " + x + "," + y);
+        msg.setContent("FIRE_DETECTED at " + x + "," + y + " intensity:" + fireIntensity);
         msg.addReceiver(new jade.core.AID("firecontrol", jade.core.AID.ISLOCALNAME));
         send(msg);
     }
@@ -167,20 +166,17 @@ public class TreeAgent extends Agent {
                 temperature = Integer.parseInt(part.substring(5));
             }
         }
-        System.out.println(getLocalName() + ": Ενημέρωση καιρού - Άνεμος: " + windEffect + 
-                          ", Υγρασία: " + humidity + "%, Θερμοκρασία: " + temperature + "°C");
-    }
-    
-    private String findTreeAtPosition(int nx, int ny) {
-        // Απλή αντιστοίχιση θέσεων με ονόματα (θα μπορούσε να βελτιωθεί)
-        if (nx == 1 && ny == 1) return "tree1";
-        if (nx == 1 && ny == 2) return "tree2";
-        if (nx == 2 && ny == 1) return "tree3";
-        return null;
     }
     
     private int getDestructionTime() {
         // Διαφορετικός χρόνος καταστροφής ανά τύπο δέντρου
         return (treeType == 1) ? 10 : (treeType == 2) ? 15 : 20;
     }
+    
+    // Getter methods for position and state
+    public int getX() { return x; }
+    public int getY() { return y; }
+    public boolean isBurning() { return burning; }
+    public boolean isDestroyed() { return destroyed; }
+    public int getFireIntensity() { return fireIntensity; }
 }

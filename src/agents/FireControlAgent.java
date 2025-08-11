@@ -419,7 +419,7 @@ public class FireControlAgent extends Agent {
                     try {
                         int x = Integer.parseInt(coords[0]);
                         int y = Integer.parseInt(coords[1]);
-                        gui.showAircraftAt(x, y, aircraft); // ΝΕΑ ΜΕΘΟΔΟΣ
+                        gui.showAgentAt(x, y, aircraft); // ΝΕΑ ΜΕΘΟΔΟΣ
                     } catch (NumberFormatException e) {
                         gui.addLog("✈️ " + aircraft + " ρίψη νερού στη θέση " + location);
                     }

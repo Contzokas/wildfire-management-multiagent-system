@@ -1,32 +1,75 @@
 package gui;
 
 import javax.swing.*;
-import javax.swing.UIManager; // ΠΡΟΣΘΗΚΗ: Explicit import για UIManager
+import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionAdapter;
+import java.awt.event.MouseWheelEvent;
+import java.awt.event.MouseWheelListener;
+import java.awt.event.KeyEvent;
+import java.awt.event.InputEvent;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
+import java.util.List;
+import java.util.ArrayList;
+import java.awt.image.BufferedImage;
+import java.awt.font.FontRenderContext;
 
 public class FireSimulationGUI extends JFrame {
-    private static final int GRID_SIZE = 5;
-    private static final int CELL_SIZE = 100;
+    private static final int GRID_SIZE = 150;
+    private static final int MIN_CELL_SIZE = 2;
+    private static final int MAX_CELL_SIZE = 20;
+    private static final int DEFAULT_CELL_SIZE = 4;
     
-    private JPanel[][] gridCells;
-    private JLabel[][] cellLabels;
-    private JTextArea logArea;
+    // Modern color scheme
+    private static final Color BACKGROUND_COLOR = new Color(0x2b2b2b);
+    private static final Color PANEL_COLOR = new Color(0x3c3f41);
+    private static final Color ACCENT_COLOR = new Color(0x4CAF50);
+    private static final Color DANGER_COLOR = new Color(0xF44336);
+    private static final Color WARNING_COLOR = new Color(0xFF9800);
+    private static final Color INFO_COLOR = new Color(0x2196F3);
+    private static final Color TEXT_COLOR = new Color(0xffffff);
+    private static final Color BORDER_COLOR = new Color(0x555555);
+    
+    // Grid components
+    private GridPanel gridPanel;
+    private JScrollPane scrollPane;
     private JLabel statusLabel;
-    private Map<String, String> cellStates;
-    private Map<String, String> cellAgents;
+    private JLabel coordinatesLabel;
+    private JLabel zoomLabel;
+    private JTextArea logArea;
+    private JPanel statsPanel;
+    private Timer refreshTimer;
     
-    // Labels για δυναμική ενημέρωση στατιστικών
+    // Grid data
+    private Map<String, CellState> cellStates = new HashMap<>();
+    private int cellSize = DEFAULT_CELL_SIZE;
+    private double zoomFactor = 1.0;
+    
+    // Statistics
+    private int totalTrees = 0;
+    private int burningTrees = 0;
+    private int destroyedTrees = 0;
+    private int activeFires = 0;
+    
+    // Emergency state
+    private boolean emergencyActive = false;
+    private Timer emergencyTimer;
+    
+    // Labels for dynamic stats update
     private JLabel fireCountLabel;
     private JLabel trucksLabel;
     private JLabel aircraftLabel;
     private JLabel helicoptersLabel;
     private JLabel crewsLabel;
     
-    // ΠΡΟΣΘΗΚΗ: Weather panel fields
+    // Weather panel fields
     private JLabel windSpeedLabel;
     private JLabel windDirectionLabel;
     private JLabel temperatureLabel;
@@ -34,527 +77,219 @@ public class FireSimulationGUI extends JFrame {
     private JLabel weatherConditionLabel;
     private JPanel weatherPanel;
     
+    // Control buttons
+    private JButton emergencyBtn;
+    private JButton stopEmergencyBtn;
+    
+    // Active fires list for proper extinguishing
+    private List<String> activeFireLocations = new ArrayList<>();
+    
+    // ENHANCED FONT SYSTEM - Combining Noto and Segoe UI
+    private Font primaryUIFont;           // Segoe UI for main UI
+    private Font emojiFont;              // Noto Color Emoji for emojis
+    private Font combinedFont;           // Combined font for text with emojis
+    private FontRenderContext fontContext;
+    
+    // Singleton instance
+    private static FireSimulationGUI instance;
+    private static final Object lock = new Object();
+    
+    // Cell State Classes
+    enum CellType {
+        EMPTY, TREE, FIRE, BURNING_TREE, DESTROYED, WATER, FIREFIGHTER, AIRCRAFT, HELICOPTER, GROUND_CREW
+    }
+    
+    static class CellState {
+        CellType type;
+        int intensity;
+        long lastUpdate;
+        boolean canBeExtinguished;
+        
+        public CellState(CellType type) {
+            this.type = type;
+            this.intensity = 0;
+            this.lastUpdate = System.currentTimeMillis();
+            this.canBeExtinguished = (type == CellType.FIRE || type == CellType.BURNING_TREE);
+        }
+        
+        public CellState(CellType type, int intensity) {
+            this.type = type;
+            this.intensity = intensity;
+            this.lastUpdate = System.currentTimeMillis();
+            this.canBeExtinguished = (type == CellType.FIRE || type == CellType.BURNING_TREE);
+        }
+    }
+    
     public FireSimulationGUI() {
-        // ΠΡΟΣΘΗΚΗ: Ρύθμιση για καλύτερη υποστήριξη Unicode και ελληνικών
+        // ENHANCED EMOJI AND FONT SETUP
+        setupAdvancedFontSupport();
+        
+        // Unicode and rendering settings
         System.setProperty("file.encoding", "UTF-8");
         System.setProperty("awt.useSystemAAFontSettings", "on");
         System.setProperty("swing.aatext", "true");
         System.setProperty("user.language", "el");
         System.setProperty("user.country", "GR");
         
-        // Ρύθμιση Noto Emoji fonts
-        setupNotoEmojiSupport();
+        // Enhanced emoji rendering properties
+        System.setProperty("java.awt.useSystemAAFontSettings", "gasp");
+        System.setProperty("swing.useSystemAAFontSettings", "on");
+        System.setProperty("java2d.uiScale", "1.0");
+        System.setProperty("awt.font.desktophints", "on");
         
-        cellStates = new HashMap<>();
-        cellAgents = new HashMap<>();
+        try {
+            UIManager.setLookAndFeel(UIManager.getLookAndFeel());
+            setupModernTheme();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         
-        // ΔΙΟΡΘΩΣΗ: initializeGrid ΠΡΩΤΑ, μετά initializeGUI
         initializeGrid();
         initializeGUI();
         
-        // ΠΡΟΣΘΗΚΗ: Αυτόματη ενημέρωση καιρού και στατιστικών
+        // Setup timers without automatic fires
         SwingUtilities.invokeLater(() -> {
-            // Άμεση πρώτη ενημέρωση
             simulateWeatherUpdate();
             updateResourceStats(4, 4, 2, 2, 1, 1, 6, 6, 0);
             
-            // ΠΡΟΣΘΗΚΗ: Timer για αυτόματη ενημέρωση καιρού κάθε 30 δευτερόλεπτα
-            Timer weatherUpdateTimer = new Timer(30000, new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    simulateWeatherUpdate();
-                    addLog("🔄 Αυτόματη ενημέρωση καιρικών συνθηκών");
-                }
+            Timer weatherUpdateTimer = new Timer(30000, e -> {
+                simulateWeatherUpdate();
+                addLog("🔄 Αυτόματη ενημέρωση καιρικών συνθηκών");
             });
             weatherUpdateTimer.start();
             
-            // ΠΡΟΣΘΗΚΗ: Timer για ενημέρωση στατιστικών κάθε 10 δευτερόλεπτα
-            Timer statsUpdateTimer = new Timer(10000, new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    // Μέτρηση ενεργών φωτιών
-                    int activeFires = 0;
-                    for (String state : cellStates.values()) {
-                        if ("FIRE".equals(state)) {
-                            activeFires++;
-                        }
-                    }
-                    updateResourceStats(4, 4, 2, 2, 1, 1, 6, 6, activeFires);
-                }
+            Timer statsUpdateTimer = new Timer(10000, e -> {
+                updateFireCount();
+                updateResourceStats(4, 4, 2, 2, 1, 1, 6, 6, activeFires);
             });
             statsUpdateTimer.start();
             
-            addLog("⚙️ Αυτόματες ενημερώσεις ενεργοποιήθηκαν");
+            addLog("⚙️ Σύστημα έτοιμο - Πατήστε 'Νέα Φωτιά' για να ξεκινήσετε");
             addLog("🌤️ Καιρός: Ενημέρωση κάθε 30 δευτερόλεπτα");
             addLog("📊 Στατιστικά: Ενημέρωση κάθε 10 δευτερόλεπτα");
         });
+        
+        startRefreshTimer();
     }
-
-    // ΠΡΟΣΘΗΚΗ: Ρύθμιση Noto Emoji support
-    private void setupNotoEmojiSupport() {
+    
+    // ENHANCED FONT SUPPORT - Combining Noto and Segoe UI
+    // ΔΙΟΡΘΩΣΗ: Απλοποίηση font setup και χρήση text εναλλακτικών
+    private void setupAdvancedFontSupport() {
         try {
-            // Προσπάθεια φόρτωσης Noto Color Emoji
-            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
-            String[] availableFonts = ge.getAvailableFontFamilyNames();
+            // Χρησιμοποίησε μόνο Segoe UI για όλα
+            primaryUIFont = new Font("Segoe UI", Font.PLAIN, 14);
+            emojiFont = new Font("Segoe UI", Font.PLAIN, 16);
+            combinedFont = primaryUIFont;
             
-            boolean hasNoto = false;
-            for (String font : availableFonts) {
-                if (font.contains("Noto") && font.contains("Emoji")) {
-                    hasNoto = true;
-                    break;
-                }
-            }
+            System.out.println("🎨 SIMPLE FONT SETUP:");
+            System.out.println("├─ Primary UI: " + primaryUIFont.getFamily());
+            System.out.println("├─ Emoji Font: " + emojiFont.getFamily());
+            System.out.println("└─ Combined Font: " + combinedFont.getFamily());
             
-            if (hasNoto) {
-                System.out.println("✅ Noto Color Emoji font βρέθηκε!");
-            } else {
-                System.out.println("⚠️ Noto Color Emoji font δεν βρέθηκε, χρήση fallback");
-            }
+            // Initialize font context
+            BufferedImage dummy = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = dummy.createGraphics();
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            fontContext = g2d.getFontRenderContext();
+            g2d.dispose();
             
         } catch (Exception e) {
-            System.err.println("Σφάλμα ρύθμισης Noto Emoji: " + e.getMessage());
-        }
-    }
-
-    // ΕΝΗΜΕΡΩΣΗ: Μέθοδος για Noto Emoji font
-    private Font getNotoEmojiFont(int size, int style) {
-        // Προτεραιότητα fonts για emoji
-        String[] emojieFonts = {
-            "Noto Color Emoji",      // Google's emoji font
-            "Apple Color Emoji",     // macOS
-            "Segoe UI Emoji",        // Windows 10/11
-            "Twitter Color Emoji",   // Twitter's emoji font
-            "EmojiOne Color",        // EmojiOne
-            "Symbola",               // Unicode symbols
-            "Arial Unicode MS",      // Fallback with good Unicode support
-            "Dialog"                 // Java fallback
-        };
-        
-        String testEmojis = "🔥🚒✈️🚁👥💧🌲🌫️";
-        
-        for (String fontName : emojieFonts) {
-            Font font = new Font(fontName, style, size);
-            if (font.canDisplayUpTo(testEmojis) == -1) {
-                return font;
-            }
-        }
-        
-        return new Font("Dialog", style, size);
-    }
-    
-    // ΔΙΟΡΘΩΣΗ: showFireAt με final variables
-    public void showFireAt(int x, int y, int intensity) {
-        updateCell(x, y, "FIRE");
-        
-        String key = x + "," + y;
-        if (!"FIRE".equals(cellStates.get(key))) {
-            addLog("🔥 ΝΕΑ ΦΩΤΙΑ στη θέση (" + x + "," + y + ") - Ένταση: " + intensity);
-            updateStatus("🔴 ΕΝΕΡΓΗ ΠΥΡΚΑΓΙΑ - Θέση: (" + x + "," + y + ")");
-        }
-        
-        SwingUtilities.invokeLater(() -> {
-            JLabel cellLabel = cellLabels[x-1][y-1];
-            JPanel cell = gridCells[x-1][y-1];
+            System.err.println("❌ Error in font setup: " + e.getMessage());
             
-            // ΔΙΟΡΘΩΣΗ: Ίδιο font με τα δέντρα (24pt)
-            cell.setBackground(Color.RED);
-            cellLabel.setText("🔥");
-            cellLabel.setFont(new Font("Segoe UI Emoji", Font.BOLD, 24)); // Ίδιο font
-            cellLabel.setForeground(Color.YELLOW);
-            cellLabel.setBorder(BorderFactory.createLineBorder(Color.ORANGE, 3));
-            
-            // Background animation
-            animateCell(cell, Color.RED, Color.ORANGE);
-        });
-        
-        // Αυτόματη κατάσβεση μετά από 1 λεπτό (60 δευτερόλεπτα)
-        Timer autoExtinguishTimer = new Timer(60000, event -> {
-            addLog("🌫️ ΑΥΤΟΜΑΤΗ ΚΑΤΑΣΒΕΣΗ στη θέση (" + x + "," + y + ") μετά από 1 λεπτό");
-            showExtinguishedAt(x, y);
-        });
-        autoExtinguishTimer.setRepeats(false);
-        autoExtinguishTimer.start();
-    }
-
-    // ΔΙΟΡΘΩΣΗ: showAgentAt με final variables
-    public void showAgentAt(int x, int y, String agentType, String agentName) {
-        if (x < 1 || x > GRID_SIZE || y < 1 || y > GRID_SIZE) return;
-        
-        SwingUtilities.invokeLater(() -> {
-            JLabel cellLabel = cellLabels[x-1][y-1];
-            String currentState = cellStates.get(x + "," + y);
-            
-            String emoji = "";
-            String fallbackText = "";
-            
-            // FINAL variables για lambda expressions
-            final Color primaryColor, secondaryColor;
-            
-            switch (agentType.toUpperCase()) {
-                case "TRUCK":
-                case "FIRETRUCK":
-                    emoji = "🚒";
-                    fallbackText = "TRUCK";
-                    primaryColor = new Color(255, 69, 0);    // Πορτοκαλί-κόκκινο
-                    secondaryColor = new Color(255, 255, 0); // Κίτρινο
-                    break;
-                case "AIRCRAFT":
-                case "AIRPLANE":
-                    emoji = "✈️";
-                    fallbackText = "PLANE";
-                    primaryColor = new Color(0, 191, 255);   // Deep sky blue
-                    secondaryColor = new Color(255, 255, 255); // Άσπρο
-                    break;
-                case "HELICOPTER":
-                    emoji = "🚁";
-                    fallbackText = "HELI";
-                    primaryColor = new Color(138, 43, 226);  // Blue violet
-                    secondaryColor = new Color(255, 255, 255); // Άσπρο
-                    break;
-                case "CREW":
-                case "GROUNDCREW":
-                    emoji = "👥";
-                    fallbackText = "CREW";
-                    primaryColor = new Color(255, 215, 0);   // Χρυσό
-                    secondaryColor = new Color(139, 69, 19); // Καφέ
-                    break;
-                case "WATER":
-                    emoji = "💧";
-                    fallbackText = "WATER";
-                    primaryColor = new Color(0, 191, 255);   // Deep sky blue
-                    secondaryColor = new Color(255, 255, 255); // Άσπρο
-                    break;
-                default:
-                    emoji = "🌲";
-                    fallbackText = "TREE";
-                    primaryColor = new Color(34, 139, 34);   // Forest green
-                    secondaryColor = new Color(0, 100, 0);   // Dark green
-            }
-            
-            Font notoFont = getNotoEmojiFont(20, Font.BOLD);
-            boolean canDisplayEmoji = notoFont.canDisplayUpTo(emoji) == -1;
-            
-            String primaryHex = String.format("#%02x%02x%02x", primaryColor.getRed(), primaryColor.getGreen(), primaryColor.getBlue());
-            String secondaryHex = String.format("#%02x%02x%02x", secondaryColor.getRed(), secondaryColor.getGreen(), secondaryColor.getBlue());
-            
-            if ("FIRE".equals(currentState)) {
-                // Agent πάνω από φωτιά - ΕΙΔΙΚΗ ΕΜΦΑΝΙΣΗ
-                if (canDisplayEmoji) {
-                    cellLabel.setText("<html><center>" + 
-                        "<span style='font-size:20px; color:#FFFF00; text-shadow: 2px 2px 4px #000000;'>🔥</span><br>" + 
-                        "<span style='font-size:16px; color:" + primaryHex + "; text-shadow: 1px 1px 2px #000000;'>" + emoji + "</span>" +
-                        "</center></html>");
-                } else {
-                    cellLabel.setText("<html><center>" + 
-                        "<span style='font-size:10px; color:#FFFF00; font-weight:bold; text-shadow: 1px 1px 2px #000000;'>FIRE</span><br>" + 
-                        "<span style='font-size:8px; color:" + primaryHex + "; font-weight:bold; text-shadow: 1px 1px 2px #000000;'>" + fallbackText + "</span>" +
-                        "</center></html>");
-                }
-                
-                // Pulsing border για προσοχή
-                Timer pulseTimer = new Timer(300, new ActionListener() {
-                    boolean toggle = false;
-                    int count = 0;
-                    
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        if (count >= 10) {
-                            ((Timer)e.getSource()).stop();
-                            return;
-                        }
-                        
-                        Color borderColor = toggle ? primaryColor : secondaryColor;
-                        cellLabel.setBorder(BorderFactory.createLineBorder(borderColor, 4));
-                        toggle = !toggle;
-                        count++;
-                    }
-                });
-                pulseTimer.start();
-                
-            } else {
-                // Κανονική εμφάνιση agent
-                if (canDisplayEmoji) {
-                    cellLabel.setText("<html><center>" + 
-                        "<span style='font-size:24px; color:" + primaryHex + "; text-shadow: 1px 1px 2px " + secondaryHex + ";'>" + emoji + "</span>" +
-                        "</center></html>");
-                } else {
-                    cellLabel.setText("<html><center>" + 
-                        "<span style='font-size:12px; color:" + primaryHex + "; font-weight:bold; text-shadow: 1px 1px 2px " + secondaryHex + ";'>" + fallbackText + "</span>" +
-                        "</center></html>");
-                }
-                
-                cellLabel.setBorder(BorderFactory.createLineBorder(secondaryColor, 2));
-            }
-            
-            cellLabel.setFont(notoFont);
-            cellAgents.put(x + "," + y, canDisplayEmoji ? emoji : fallbackText);
-            
-            // Αυτόματη αφαίρεση μετά από λίγο
-            Timer timer = new Timer(4000, event -> clearAgentAt(x, y, agentType));
-            timer.setRepeats(false);
-            timer.start();
-        });
-    }
-
-    // ΕΝΗΜΕΡΩΣΗ: updateCell με δύο χρώματα
-    public void updateCell(int x, int y, String state) {
-        if (x < 1 || x > GRID_SIZE || y < 1 || y > GRID_SIZE) return;
-        
-        JPanel cell = gridCells[x-1][y-1];
-        JLabel cellLabel = cellLabels[x-1][y-1];
-        String key = x + "," + y;
-        
-        cellStates.put(key, state);
-        
-        SwingUtilities.invokeLater(() -> {
-            // ΔΙΟΡΘΩΣΗ: Ίδιο font για όλες τις καταστάσεις (24pt Segoe UI Emoji)
-            Font standardCellFont = new Font("Segoe UI Emoji", Font.BOLD, 24);
-            cellLabel.setBorder(null);
-            
-            switch (state) {
-                case "FIRE":
-                    Color fireColor1 = new Color(255, 0, 0);   // Κόκκινο
-                    Color fireColor2 = new Color(255, 140, 0); // Πορτοκαλί
-                    cell.setBackground(fireColor1);
-                    
-                    // ΔΙΟΡΘΩΣΗ: Ίδιο font όπως τα δέντρα
-                    cellLabel.setText("🔥");
-                    cellLabel.setFont(standardCellFont); // Ίδιο font με τα δέντρα
-                    cellLabel.setForeground(Color.YELLOW);
-                    
-                    // Προσθήκη κίτρινου border για ορατότητα
-                    cellLabel.setBorder(BorderFactory.createLineBorder(Color.YELLOW, 3));
-                    animateCell(cell, fireColor1, fireColor2);
-                    break;
-                    
-                case "WATER":
-                    cell.setBackground(Color.BLUE);
-                    cellLabel.setText("💧");
-                    cellLabel.setFont(standardCellFont); // Ίδιο font με τα δέντρα
-                    cellLabel.setForeground(Color.WHITE);
-                    cellLabel.setBorder(BorderFactory.createLineBorder(Color.WHITE, 2));
-                    
-                    Timer waterTimer = new Timer(3000, timerEvent -> {
-                        cell.setBackground(Color.GREEN);
-                        cellLabel.setText("🌲");
-                        cellLabel.setFont(standardCellFont); // Ίδιο font
-                        cellLabel.setForeground(new Color(0, 100, 0));
-                        cellLabel.setBorder(null);
-                        cellStates.put(key, "TREE");
-                    });
-                    waterTimer.setRepeats(false);
-                    waterTimer.start();
-                    break;
-                    
-                case "EXTINGUISHED":
-                    cell.setBackground(Color.DARK_GRAY);
-                    cellLabel.setText("🌫️");
-                    cellLabel.setFont(standardCellFont); // Ίδιο font με τα δέντρα
-                    cellLabel.setForeground(Color.LIGHT_GRAY);
-                    cellLabel.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY, 1));
-                    
-                    Timer extinguishTimer = new Timer(5000, timerEvent -> updateCell(x, y, "TREE"));
-                    extinguishTimer.setRepeats(false);
-                    extinguishTimer.start();
-                    break;
-                    
-                case "TREE":
-                default:
-                    cell.setBackground(Color.GREEN);
-                    cellLabel.setText("🌲");
-                    cellLabel.setFont(standardCellFont); // 24pt Segoe UI Emoji
-                    cellLabel.setForeground(new Color(0, 100, 0));
-                    cellLabel.setBorder(null);
-                    break;
-            }
-            cell.repaint();
-        });
-    }
-    
-    public void showWaterDropAt(int x, int y, String agent) {
-        showAgentAt(x, y, agent.contains("aircraft") ? "AIRCRAFT" : "HELICOPTER", agent);
-        
-        SwingUtilities.invokeLater(() -> {
-            JLabel cellLabel = cellLabels[x-1][y-1];
-            JPanel cell = gridCells[x-1][y-1];
-            
-            // Ειδική εμφάνιση για water drop
-            cell.setBackground(Color.BLUE);
-            cellLabel.setText("💧");
-            cellLabel.setFont(new Font("Segoe UI Emoji", Font.BOLD, 24)); // Ίδιο font
-            cellLabel.setForeground(Color.WHITE);
-            
-            // Εφέ animation για το νερό
-            animateCell(cell, Color.BLUE, Color.CYAN);
-        });
-        
-        addLog("💧 ΡΙΨΗ ΝΕΡΟΥ από " + agent + " στη θέση (" + x + "," + y + ")");
-        
-        Timer dropTimer = new Timer(3000, timerEvent -> updateCell(x, y, "WATER"));
-        dropTimer.setRepeats(false);
-        dropTimer.start();
-    }
-    
-    public void showTruckAt(int x, int y, String truckName) {
-        showAgentAt(x, y, "TRUCK", truckName);
-        addLog("🚒 " + truckName + " έφτασε στη θέση (" + x + "," + y + ")");
-    }
-    
-    public void showAircraftAt(int x, int y, String aircraftName) {
-        showAgentAt(x, y, "AIRCRAFT", aircraftName);
-        addLog("✈️ " + aircraftName + " πετάει πάνω από τη θέση (" + x + "," + y + ")");
-    }
-    
-    public void showHelicopterAt(int x, int y, String helicopterName) {
-        showAgentAt(x, y, "HELICOPTER", helicopterName);
-        addLog("🚁 " + helicopterName + " ιπτάμενος στη θέση (" + x + "," + y + ")");
-    }
-    
-    public void showGroundCrewAt(int x, int y, String crewName) {
-        showAgentAt(x, y, "CREW", crewName);
-        addLog("👥 " + crewName + " εργάζεται στη θέση (" + x + "," + y + ")");
-    }
-    
-    public void showExtinguishedAt(int x, int y) {
-        updateCell(x, y, "EXTINGUISHED");
-        addLog("🌫️ ΚΑΤΑΣΒΕΣΗ στη θέση (" + x + "," + y + ")");
-        
-        SwingUtilities.invokeLater(() -> {
-            JLabel cellLabel = cellLabels[x-1][y-1];
-            JPanel cell = gridCells[x-1][y-1];
-            
-            cell.setBackground(Color.DARK_GRAY);
-            
-            // ΔΙΟΡΘΩΣΗ: Ίδιο font με τα δέντρα
-            cellLabel.setText("🌫️");
-            cellLabel.setFont(new Font("Segoe UI Emoji", Font.BOLD, 24)); // Ίδιο font
-            cellLabel.setForeground(Color.LIGHT_GRAY);
-            
-            // Προσθήκη εφέ για καλύτερη ορατότητα
-            cellLabel.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY, 1));
-            
-            Timer extinguishTimer = new Timer(5000, timerEvent -> updateCell(x, y, "TREE"));
-            extinguishTimer.setRepeats(false);
-            extinguishTimer.start();
-        });
-    }
-    
-    private void animateCell(JPanel cell, Color color1, Color color2) {
-        Timer animationTimer = new Timer(500, new ActionListener() {
-            boolean toggle = false;
-            int count = 0;
-            
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (count >= 10) {
-                    ((Timer)e.getSource()).stop();
-                    return;
-                }
-                
-                cell.setBackground(toggle ? color1 : color2);
-                toggle = !toggle;
-                count++;
-                cell.repaint();
-            }
-        });
-        animationTimer.start();
-    }
-    
-    public void addLog(String message) {
-        SwingUtilities.invokeLater(() -> {
-            if (logArea != null) {
-                String timestamp = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
-                logArea.append("[" + timestamp + "] " + message + "\n");
-                logArea.setCaretPosition(logArea.getDocument().getLength());
-            }
-        });
-    }
-    
-    // ΔΙΟΡΘΩΣΗ: updateStatus για χρήση Noto font
-    public void updateStatus(String status) {
-        SwingUtilities.invokeLater(() -> {
-            if (statusLabel != null) {
-                statusLabel.setText(status);
-                statusLabel.setFont(getNotoEmojiFont(14, Font.BOLD)); // Noto font
-            }
-        });
-    }
-    
-    public void showEmergencyDeclared() {
-        updateStatus("🚨 ΚΑΤΑΣΤΑΣΗ ΕΚΤΑΚΤΗΣ ΑΝΑΓΚΗΣ");
-        addLog("🚨🚨🚨 ΚΗΡΥΞΗ ΚΑΤΑΣΤΑΣΗΣ ΕΚΤΑΚΤΗΣ ΑΝΑΓΚΗΣ 🚨🚨🚨");
-        
-        if (statusLabel != null) {
-            statusLabel.setBackground(Color.RED);
-            statusLabel.setForeground(Color.WHITE);
-            statusLabel.setOpaque(true);
-            statusLabel.setFont(getNotoEmojiFont(14, Font.BOLD)); // Noto font
+            // Emergency fallback
+            primaryUIFont = new Font(Font.SANS_SERIF, Font.PLAIN, 14);
+            emojiFont = new Font(Font.SANS_SERIF, Font.PLAIN, 16);
+            combinedFont = primaryUIFont;
         }
     }
     
-    public void showAllExtinguished() {
-        updateStatus("🟢 ΠΛΗΡΗΣ ΚΑΤΑΣΒΕΣΗ - Παρακολούθηση για αναζοπυρώσεις");
-        addLog("🎉 ΠΛΗΡΗΣ ΚΑΤΑΣΒΕΣΗ ΟΛΩΝ ΤΩΝ ΕΣΤΙΩΝ!");
+    // Create a combined font that prefers emoji font for emojis, UI font for text
+    private Font createCombinedFont(Font uiFont, Font emojiFont) {
+        // This creates a composite font approach
+        // We'll handle this in the rendering methods
+        return uiFont; // Base font
+    }
+    
+    // Enhanced text rendering method that combines fonts
+    private void drawTextWithEmojis(Graphics2D g2d, String text, int x, int y) {
+        if (text == null || text.isEmpty()) return; // ΠΡΟΣΘΗΚΗ: Έλλειπε το semicolon (;)
         
-        if (statusLabel != null) {
-            statusLabel.setBackground(null);
-            statusLabel.setForeground(Color.BLACK);
-            statusLabel.setOpaque(false);
-            statusLabel.setFont(getNotoEmojiFont(14, Font.BOLD)); // Noto font
+        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+        
+        // Split text into emoji and non-emoji parts
+        FontMetrics uiFM = g2d.getFontMetrics(primaryUIFont);
+        FontMetrics emojiFM = g2d.getFontMetrics(emojiFont);
+        
+        int currentX = x;
+        
+        for (int i = 0; i < text.length(); ) {
+            int codePoint = text.codePointAt(i);
+            int charCount = Character.charCount(codePoint);
+            String currentChar = text.substring(i, i + charCount);
+            
+            // Check if it's an emoji (roughly)
+            boolean isEmoji = (codePoint >= 0x1F600 && codePoint <= 0x1F64F) ||  // Emoticons
+                             (codePoint >= 0x1F300 && codePoint <= 0x1F5FF) ||  // Misc Symbols
+                             (codePoint >= 0x1F680 && codePoint <= 0x1F6FF) ||  // Transport
+                             (codePoint >= 0x1F1E0 && codePoint <= 0x1F1FF) ||  // Flags
+                             (codePoint >= 0x2600 && codePoint <= 0x26FF) ||   // Misc symbols
+                             (codePoint >= 0x2700 && codePoint <= 0x27BF);     // Dingbats
+        
+        if (isEmoji && emojiFont.canDisplay(codePoint)) {
+            // Use emoji font
+            Font oldFont = g2d.getFont();
+            g2d.setFont(emojiFont);
+            g2d.drawString(currentChar, currentX, y);
+            currentX += emojiFM.stringWidth(currentChar);
+            g2d.setFont(oldFont);
+        } else {
+            // Use UI font
+            Font oldFont = g2d.getFont();
+            g2d.setFont(primaryUIFont);
+            g2d.drawString(currentChar, currentX, y);
+            currentX += uiFM.stringWidth(currentChar);
+            g2d.setFont(oldFont);
         }
-    }
-    
-    private void simulateRandomFire() {
-        int x = (int)(Math.random() * GRID_SIZE) + 1;
-        int y = (int)(Math.random() * GRID_SIZE) + 1;
-        showFireAt(x, y, (int)(Math.random() * 5) + 1);
-    }
-    
-    private void showEmergencyDialog() {
-        String[] options = {"Ναι", "Όχι"};
-        int choice = JOptionPane.showOptionDialog(
-            this,
-            "Θέλετε να κηρύξετε κατάσταση έκτακτης ανάγκης;",
-            "Έκτακτη Ανάγκη",
-            JOptionPane.YES_NO_OPTION,
-            JOptionPane.WARNING_MESSAGE,
-            null,
-            options,
-            options[1]
-        );
         
-        if (choice == 0) {
-            showEmergencyDeclared();
-        }
+        i += charCount;
+    }
     }
     
-    private void showStatsDialog() {
-        StringBuilder stats = new StringBuilder();
-        stats.append("📊 ΣΤΑΤΙΣΤΙΚΑ ΠΡΟΣΟΜΟΙΩΣΗΣ\n\n");
-        stats.append("🔥 Συνολικές Εστίες: ").append(cellStates.values().stream().mapToInt(s -> s.equals("FIRE") ? 1 : 0).sum()).append("\n");
-        stats.append("✅ Σβησμένες Περιοχές: ").append(cellStates.values().stream().mapToInt(s -> s.equals("EXTINGUISHED") ? 1 : 0).sum()).append("\n");
-        stats.append("🌲 Υγιή Δέντρα: ").append(cellStates.values().stream().mapToInt(s -> s.equals("TREE") ? 1 : 0).sum()).append("\n");
-        
-        JOptionPane.showMessageDialog(this, stats.toString(), "Στατιστικά", JOptionPane.INFORMATION_MESSAGE);
-    }
-    
-    // ΔΙΟΡΘΩΣΗ: Thread-safe getInstance
-
-    private static FireSimulationGUI instance;
-    private static final Object lock = new Object();
-
+    // FIXED: Complete getInstance implementation
     public static FireSimulationGUI getInstance() {
         if (instance == null) {
             synchronized (lock) {
                 if (instance == null) {
                     System.out.println("🔄 Δημιουργία νέου FireSimulationGUI instance...");
-                    try {
+                    
+                    if (SwingUtilities.isEventDispatchThread()) {
                         instance = new FireSimulationGUI();
-                        System.out.println("✅ FireSimulationGUI instance δημιουργήθηκε!");
-                    } catch (Exception e) {
-                        System.err.println("❌ ΣΦΑΛΜΑ δημιουργίας GUI: " + e.getMessage());
-                        e.printStackTrace();
-                        return null;
+                        instance.setVisible(true);
+                    } else {
+                        SwingUtilities.invokeLater(() -> {
+                            if (instance == null) {
+                                instance = new FireSimulationGUI();
+                                instance.setVisible(true);
+                            }
+                        });
+                        
+                        int maxWait = 50;
+                        int waited = 0;
+                        while (instance == null && waited < maxWait) {
+                            try {
+                                Thread.sleep(100);
+                                waited++;
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        }
+                        
+                        if (instance == null) {
+                            System.err.println("❌ TIMEOUT δημιουργίας GUI - δημιουργία fallback instance");
+                            instance = new FireSimulationGUI();
+                        }
                     }
                 }
             }
@@ -562,589 +297,1168 @@ public class FireSimulationGUI extends JFrame {
         return instance;
     }
     
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            FireSimulationGUI gui = FireSimulationGUI.getInstance();
-            gui.setVisible(true);
-            gui.addLog("🚀 Σύστημα προσομοίωσης έτοιμο!");
-        });
+    private void setupModernTheme() {
+        // ΚΛΕΙΔΙ: Χρησιμοποίησε primaryUIFont για όλα τα UI elements
+        UIManager.put("Panel.background", PANEL_COLOR);
+        UIManager.put("Panel.foreground", TEXT_COLOR);
+        
+        UIManager.put("Button.background", PANEL_COLOR);
+        UIManager.put("Button.foreground", TEXT_COLOR);
+        UIManager.put("Button.font", primaryUIFont.deriveFont(Font.BOLD, 12f)); // ΑΛΛΑΓΗ
+        UIManager.put("Button.border", new LineBorder(BORDER_COLOR, 1));
+        UIManager.put("Button.focusPainted", false);
+        
+        UIManager.put("Label.foreground", TEXT_COLOR);
+        UIManager.put("Label.font", primaryUIFont); // ΑΛΛΑΓΗ
+        
+        UIManager.put("TextArea.background", BACKGROUND_COLOR);
+        UIManager.put("TextArea.foreground", TEXT_COLOR);
+        UIManager.put("TextArea.caretForeground", TEXT_COLOR);
+        UIManager.put("TextArea.font", primaryUIFont.deriveFont(12f)); // ΑΛΛΑΓΗ
+        UIManager.put("TextArea.selectionBackground", INFO_COLOR);
+        
+        UIManager.put("ScrollPane.background", BACKGROUND_COLOR);
+        UIManager.put("ScrollBar.background", PANEL_COLOR);
+        UIManager.put("ScrollBar.thumb", BORDER_COLOR);
+        
+        UIManager.put("Menu.font", primaryUIFont); // ΑΛΛΑΓΗ
+        UIManager.put("MenuItem.font", primaryUIFont); // ΑΛΛΑΓΗ
+        UIManager.put("Menu.foreground", TEXT_COLOR);
+        UIManager.put("MenuItem.foreground", TEXT_COLOR);
+        UIManager.put("MenuBar.background", PANEL_COLOR);
+        UIManager.put("Menu.background", PANEL_COLOR);
+        UIManager.put("MenuItem.background", PANEL_COLOR);
+        
+        UIManager.put("TitledBorder.titleColor", TEXT_COLOR);
+        UIManager.put("TitledBorder.border", new LineBorder(BORDER_COLOR));
     }
-
-    // ΕΝΗΜΕΡΩΣΗ: initializeGUI με weather panel
+    
     private void initializeGUI() {
-        setTitle("Προσομοίωση Δασικής Πυρκαγιάς - Πολυπρακτορικό Σύστημα");
+        setTitle("FIRE Προσομοίωση Δασικής Πυρκαγιάς - Πολυπρακτορικό Σύστημα (150x150)");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
         
-        // ΔΙΟΡΘΩΣΗ: Αρχικό layout - Αριστερά grid, δεξιά panels, κάτω log
+        getContentPane().setBackground(BACKGROUND_COLOR);
         setLayout(new BorderLayout());
         
-        // ΑΡΙΣΤΕΡΑ: Grid panel με controls
-        JPanel leftPanel = new JPanel(new BorderLayout());
-        leftPanel.add(createGridPanel(), BorderLayout.CENTER);
-        leftPanel.add(createControlPanel(), BorderLayout.SOUTH);
+        createGridPanel();
+        createMenuBar();
         
-        // ΔΕΞΙΑ: Στοιχεία (καιρός, πόροι, συμβολισμοί)
-        JPanel rightPanel = new JPanel(new BorderLayout());
-        rightPanel.setPreferredSize(new Dimension(350, 0)); // Σταθερό πλάτος
+        JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
+        mainSplit.setBackground(BACKGROUND_COLOR);
+        mainSplit.setBorder(new EmptyBorder(5, 5, 5, 5));
+        mainSplit.setLeftComponent(createLeftPanel());
+        mainSplit.setRightComponent(createRightPanel());
+        mainSplit.setDividerLocation(800);
+        mainSplit.setDividerSize(8);
         
-        // Δεξί panel με 3 τμήματα από πάνω προς τα κάτω
-        rightPanel.add(createWeatherPanel(), BorderLayout.NORTH);     // Καιρός πάνω
-        rightPanel.add(createStatsPanel(), BorderLayout.CENTER);      // Πόροι μέση
-        rightPanel.add(createLegendPanel(), BorderLayout.SOUTH);      // Συμβολισμοί κάτω
+        add(mainSplit, BorderLayout.CENTER);
+        add(createStatusBar(), BorderLayout.SOUTH);
         
-        // ΚΑΤΩ: Log panel
-        JPanel bottomPanel = createLogPanel();
-        bottomPanel.setPreferredSize(new Dimension(0, 120)); // Μικρότερο ύψος
+        setMinimumSize(new Dimension(1400, 900));
         
-        // ΠΑΝΩ: Status bar
-        JPanel topPanel = createStatusPanel();
-        
-        // Προσθήκη στο κύριο frame
-        add(leftPanel, BorderLayout.CENTER);        // Αριστερά - Grid
-        add(rightPanel, BorderLayout.EAST);         // Δεξιά - Στοιχεία  
-        add(bottomPanel, BorderLayout.SOUTH);       // Κάτω - Log
-        add(topPanel, BorderLayout.NORTH);          // Πάνω - Status
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Δημιουργία Weather Panel
-    private JPanel createWeatherPanel() {
-        weatherPanel = new JPanel(new GridLayout(5, 1, 2, 2)); // 5 γραμμές, 1 στήλη
-        weatherPanel.setBorder(BorderFactory.createTitledBorder("🌤️ Καιρικές Συνθήκες"));
-        weatherPanel.setPreferredSize(new Dimension(0, 140)); // Μικρότερο ύψος
-        weatherPanel.setBackground(new Color(240, 248, 255));
-        
-        // Αρχικοποίηση labels
-        weatherConditionLabel = new JLabel("☀️ Συνθήκες: Φόρτωση...");
-        windSpeedLabel = new JLabel("💨 Άνεμος: -- km/h");
-        windDirectionLabel = new JLabel("🧭 Κατεύθυνση: --");
-        temperatureLabel = new JLabel("🌡️ Θερμοκρασία: --°C");
-        humidityLabel = new JLabel("💧 Υγρασία: --%");
-        
-        // Ρύθμιση fonts - μικρότερα για καλύτερη εμφάνιση
-        Font weatherFont = getGreekSupportFont(11, Font.PLAIN);
-        weatherConditionLabel.setFont(new Font("Dialog", Font.BOLD, 12));
-        windSpeedLabel.setFont(weatherFont);
-        windDirectionLabel.setFont(weatherFont);
-        temperatureLabel.setFont(weatherFont);
-        humidityLabel.setFont(weatherFont);
-        
-        // Χρωματική κωδικοποίηση
-        weatherConditionLabel.setForeground(new Color(34, 139, 34));
-        windSpeedLabel.setForeground(new Color(70, 130, 180));
-        windDirectionLabel.setForeground(new Color(72, 61, 139));
-        temperatureLabel.setForeground(new Color(255, 69, 0));
-        humidityLabel.setForeground(new Color(0, 191, 255));
-        
-        // Προσθήκη στο panel
-        weatherPanel.add(weatherConditionLabel);
-        weatherPanel.add(windSpeedLabel);
-        weatherPanel.add(windDirectionLabel);
-        weatherPanel.add(temperatureLabel);
-        weatherPanel.add(humidityLabel);
-        
-        return weatherPanel;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Μέθοδος ενημέρωσης καιρικών συνθηκών
-    public void updateWeatherConditions(double windSpeed, String windDirection, 
-                                      double temperature, double humidity, String condition) {
-        SwingUtilities.invokeLater(() -> {
-            // Ενημέρωση κειμένων
-            windSpeedLabel.setText(String.format("💨 Ταχύτητα Ανέμου: %.1f km/h", windSpeed));
-            windDirectionLabel.setText("🧭 Κατεύθυνση: " + windDirection);
-            temperatureLabel.setText(String.format("🌡️ Θερμοκρασία: %.1f°C", temperature));
-            humidityLabel.setText(String.format("💧 Υγρασία: %.0f%%", humidity));
-            
-            // Δυναμικό emoji και χρώμα ανάλογα με τις συνθήκες
-            String weatherEmoji = getWeatherEmoji(condition, temperature, windSpeed, humidity);
-            weatherConditionLabel.setText(weatherEmoji + " Συνθήκες: " + condition);
-            
-            // Χρωματική κωδικοποίηση κινδύνου
-            Color dangerColor = calculateFireDangerColor(windSpeed, temperature, humidity);
-            weatherPanel.setBackground(dangerColor);
-            weatherConditionLabel.setForeground(getDangerTextColor(dangerColor));
-            
-            // Ενημέρωση χρωμάτων ανάλογα με τις τιμές
-            updateWeatherColors(windSpeed, temperature, humidity);
-        });
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Επιλογή emoji ανάλογα με τις συνθήκες
-    private String getWeatherEmoji(String condition, double temperature, double windSpeed, double humidity) {
-        if (condition.toLowerCase().contains("καύσωνας") || temperature > 35) {
-            return "🔥";
-        } else if (condition.toLowerCase().contains("βροχή") || humidity > 85) {
-            return "🌧️";
-        } else if (condition.toLowerCase().contains("θύελλα") || windSpeed > 25) {
-            return "⛈️";
-        } else if (condition.toLowerCase().contains("συννεφιά")) {
-            return "☁️";
-        } else if (condition.toLowerCase().contains("ομίχλη")) {
-            return "🌫️";
-        } else if (temperature > 25 && humidity < 30) {
-            return "☀️"; // Ηλιόλουστο και ξηρό
-        } else {
-            return "🌤️"; // Μερικώς συννεφιασμένο
-        }
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Υπολογισμός χρώματος κινδύνου πυρκαγιάς
-    private Color calculateFireDangerColor(double windSpeed, double temperature, double humidity) {
-        // Υπολογισμός δείκτη κινδύνου (0-100)
-        double dangerIndex = 0;
-        
-        // Θερμοκρασία (0-40 points)
-        if (temperature > 35) dangerIndex += 40;
-        else if (temperature > 30) dangerIndex += 30;
-        else if (temperature > 25) dangerIndex += 20;
-        else if (temperature > 20) dangerIndex += 10;
-        
-        // Άνεμος (0-35 points)
-        if (windSpeed > 25) dangerIndex += 35;
-        else if (windSpeed > 15) dangerIndex += 25;
-        else if (windSpeed > 10) dangerIndex += 15;
-        else if (windSpeed > 5) dangerIndex += 10;
-        
-        // Υγρασία (0-25 points) - αντίστροφα ανάλογη
-        if (humidity < 20) dangerIndex += 25;
-        else if (humidity < 30) dangerIndex += 20;
-        else if (humidity < 40) dangerIndex += 15;
-        else if (humidity < 50) dangerIndex += 10;
-        
-        // Επιστροφή χρώματος ανάλογα με τον κίνδυνο
-        if (dangerIndex >= 80) {
-            return new Color(220, 20, 60, 50); // Crimson - ΕΞΑΙΡΕΤΙΚΟΣ ΚΙΝΔΥΝΟΣ
-        } else if (dangerIndex >= 60) {
-            return new Color(255, 69, 0, 50); // Orange red - ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ
-        } else if (dangerIndex >= 40) {
-            return new Color(255, 140, 0, 50); // Dark orange - ΜΕΤΡΙΟΣ ΚΙΝΔΥΝΟΣ
-        } else if (dangerIndex >= 20) {
-            return new Color(255, 255, 0, 30); // Yellow - ΧΑΜΗΛΟΣ ΚΙΝΔΥΝΟΣ
-        } else {
-            return new Color(144, 238, 144, 30); // Light green - ΕΛΑΧΙΣΤΟΣ ΚΙΝΔΥΝΟΣ
-        }
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Χρώμα κειμένου ανάλογα με το background
-    private Color getDangerTextColor(Color backgroundColor) {
-        // Υπολογισμός luminance για επιλογή κατάλληλου χρώματος κειμένου
-        double luminance = (0.299 * backgroundColor.getRed() + 
-                           0.587 * backgroundColor.getGreen() + 
-                           0.114 * backgroundColor.getBlue()) / 255;
-        
-        return luminance > 0.5 ? Color.BLACK : Color.WHITE;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Ενημέρωση χρωμάτων ανάλογα με τις τιμές
-    private void updateWeatherColors(double windSpeed, double temperature, double humidity) {
-        // Χρώμα ανέμου (πιο κόκκινο = πιο επικίνδυνος)
-        if (windSpeed > 20) {
-            windSpeedLabel.setForeground(Color.RED);
-        } else if (windSpeed > 10) {
-            windSpeedLabel.setForeground(new Color(255, 140, 0));
-        } else {
-            windSpeedLabel.setForeground(new Color(70, 130, 180));
-        }
-        
-        // Χρώμα θερμοκρασίας
-        if (temperature > 35) {
-            temperatureLabel.setForeground(Color.RED);
-        } else if (temperature > 30) {
-            temperatureLabel.setForeground(new Color(255, 69, 0));
-        } else if (temperature > 25) {
-            temperatureLabel.setForeground(new Color(255, 140, 0));
-        } else {
-            temperatureLabel.setForeground(new Color(0, 100, 0));
-        }
-        
-        // Χρώμα υγρασίας (χαμηλή υγρασία = κίνδυνος)
-        if (humidity < 20) {
-            humidityLabel.setForeground(Color.RED);
-        } else if (humidity < 30) {
-            humidityLabel.setForeground(new Color(255, 140, 0));
-        } else if (humidity < 50) {
-            humidityLabel.setForeground(new Color(255, 215, 0));
-        } else {
-            humidityLabel.setForeground(new Color(0, 191, 255));
-        }
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Μέθοδος για προσομοίωση καιρικών συνθηκών (για testing)
-    public void simulateWeatherUpdate() {
-        // Τυχαίες τιμές για δοκιμή
-        double windSpeed = 5 + Math.random() * 25; // 5-30 km/h
-        String[] directions = {"Β", "ΒΑ", "Α", "ΝΑ", "Ν", "ΝΔ", "Δ", "ΒΔ"};
-        String windDirection = directions[(int)(Math.random() * directions.length)];
-        double temperature = 15 + Math.random() * 25; // 15-40°C
-        double humidity = 20 + Math.random() * 60; // 20-80%
-        
-        String[] conditions = {
-            "Αίθριος", "Μερικώς Συννεφιασμένος", "Συννεφιασμένος", 
-            "Καύσωνας", "Ξηρός", "Υγρός", "Ασταθής"
-        };
-        String condition = conditions[(int)(Math.random() * conditions.length)];
-        
-        updateWeatherConditions(windSpeed, windDirection, temperature, humidity, condition);
-        addLog("🌤️ Ενημέρωση καιρού: " + condition + ", " + 
-               String.format("%.1f°C, %.0f%% υγρασία, άνεμος %.1f km/h %s", 
-               temperature, humidity, windSpeed, windDirection));
-    }
-
-    // ΕΝΗΜΕΡΩΣΗ: createControlPanel με κουμπί καιρού
-    private JPanel createControlPanel() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 5));
-        panel.setBorder(BorderFactory.createTitledBorder("🎮 Έλεγχος"));
-        panel.setPreferredSize(new Dimension(0, 60)); // Μικρότερο ύψος
-        
-        JButton startFireBtn = new JButton("🔥 Φωτιά");
-        JButton emergencyBtn = new JButton("🚨 Έκτακτη");
-        JButton clearLogBtn = new JButton("🗑️ Καθαρισμός");
-        JButton exitBtn = new JButton("❌ Έξοδος");
-        // ΑΦΑΙΡΕΣΗ: weatherBtn
-
-        // Μικρότερα κουμπιά
-        Font buttonFont = getGreekSupportFont(10, Font.BOLD);
-        Dimension buttonSize = new Dimension(90, 30);
-        
-        startFireBtn.setFont(buttonFont);
-        startFireBtn.setPreferredSize(buttonSize);
-        emergencyBtn.setFont(buttonFont);
-        emergencyBtn.setPreferredSize(buttonSize);
-        clearLogBtn.setFont(buttonFont);
-        clearLogBtn.setPreferredSize(buttonSize);
-        exitBtn.setFont(buttonFont);
-        exitBtn.setPreferredSize(buttonSize);
-        
-        // Event handlers (χωρίς weather button)
-        startFireBtn.addActionListener(event -> simulateRandomFire());
-        emergencyBtn.addActionListener(event -> showEmergencyDialog());
-        clearLogBtn.addActionListener(event -> logArea.setText(""));
-        exitBtn.addActionListener(event -> System.exit(0));
-        
-        // Χρωματική κωδικοποίηση
-        startFireBtn.setBackground(new Color(255, 200, 200));
-        emergencyBtn.setBackground(new Color(255, 180, 180));
-        clearLogBtn.setBackground(new Color(240, 240, 240));
-        exitBtn.setBackground(new Color(220, 220, 220));
-        
-        panel.add(startFireBtn);
-        panel.add(emergencyBtn);
-        panel.add(clearLogBtn);
-        panel.add(exitBtn);
-        
-        return panel;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος initializeGrid
-    private void initializeGrid() {
         try {
-            System.out.println("🔄 Αρχικοποίηση grid " + GRID_SIZE + "x" + GRID_SIZE + "...");
-            
-            gridCells = new JPanel[GRID_SIZE][GRID_SIZE];
-            cellLabels = new JLabel[GRID_SIZE][GRID_SIZE];
-            
-            for (int i = 0; i < GRID_SIZE; i++) {
-                for (int j = 0; j < GRID_SIZE; j++) {
-                    // Αρχικοποίηση των cells
-                    gridCells[i][j] = new JPanel(new BorderLayout());
-                    gridCells[i][j].setPreferredSize(new Dimension(CELL_SIZE, CELL_SIZE));
-                    gridCells[i][j].setBackground(Color.GREEN);
-                    gridCells[i][j].setBorder(BorderFactory.createLineBorder(Color.BLACK, 1));
-                    
-                    // Αρχικοποίηση των labels
-                    cellLabels[i][j] = new JLabel("🌲", SwingConstants.CENTER);
-                    cellLabels[i][j].setFont(new Font("Segoe UI Emoji", Font.BOLD, 18));
-                    cellLabels[i][j].setForeground(new Color(0, 100, 0));
-                    
-                    gridCells[i][j].add(cellLabels[i][j], BorderLayout.CENTER);
-                    
-                    // Αρχικοποίηση κατάστασης
-                    cellStates.put((i+1) + "," + (j+1), "TREE");
-                }
-            }
-            
-            System.out.println("✅ Grid αρχικοποιήθηκε επιτυχώς!");
-            
+            setIconImage(createFireIcon());
         } catch (Exception e) {
-            System.err.println("❌ ΣΦΑΛΜΑ αρχικοποίησης grid: " + e.getMessage());
-            e.printStackTrace();
-            
-            // Fallback αρχικοποίηση
-            gridCells = new JPanel[GRID_SIZE][GRID_SIZE];
-            cellLabels = new JLabel[GRID_SIZE][GRID_SIZE];
-            
-            for (int i = 0; i < GRID_SIZE; i++) {
-                for (int j = 0; j < GRID_SIZE; j++) {
-                    gridCells[i][j] = new JPanel();
-                    gridCells[i][j].setBackground(Color.GREEN);
-                    cellLabels[i][j] = new JLabel("T");
-                    gridCells[i][j].add(cellLabels[i][j]);
-                    cellStates.put((i+1) + "," + (j+1), "TREE");
-                }
-            }
+            // Ignore icon errors
         }
     }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος clearAgentAt
-    public void clearAgentAt(int x, int y, String agentType) {
-        if (x < 1 || x > GRID_SIZE || y < 1 || y > GRID_SIZE) return;
+    
+    private Image createFireIcon() {
+        BufferedImage icon = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2d = icon.createGraphics();
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         
-        SwingUtilities.invokeLater(() -> {
-            String key = x + "," + y;
-            cellAgents.remove(key);
-            
-            // Επαναφορά στην αρχική κατάσταση του cell
-            String currentState = cellStates.get(key);
-            if (currentState != null) {
-                updateCell(x, y, currentState);
-            }
-        });
+        g2d.setColor(DANGER_COLOR);
+        g2d.fillOval(8, 12, 16, 16);
+        g2d.setColor(WARNING_COLOR);
+        g2d.fillOval(10, 8, 12, 20);
+        g2d.setColor(Color.YELLOW);
+        g2d.fillOval(12, 10, 8, 16);
+        
+        g2d.dispose();
+        return icon;
+    }
+    
+    private void createMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+        menuBar.setBackground(PANEL_COLOR);
+        menuBar.setBorder(new LineBorder(BORDER_COLOR));
+        
+        JMenu viewMenu = createEmojiMenu("VIEW Προβολή");
+        
+        JMenuItem zoomIn = createEmojiMenuItem("ZOOM+ Μεγέθυνση", KeyEvent.VK_PLUS, InputEvent.CTRL_DOWN_MASK);
+        zoomIn.addActionListener(e -> zoomIn());
+        
+        JMenuItem zoomOut = createEmojiMenuItem("ZOOM- Σμίκρυνση", KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK);
+        zoomOut.addActionListener(e -> zoomOut());
+        
+        JMenuItem resetView = createEmojiMenuItem("HOME Επαναφορά Προβολής", KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK);
+        resetView.addActionListener(e -> resetView());
+        
+        JMenuItem centerView = createEmojiMenuItem("TARGET Κεντράρισμα", KeyEvent.VK_C, InputEvent.CTRL_DOWN_MASK);
+        centerView.addActionListener(e -> centerView());
+        
+        viewMenu.add(zoomIn);
+        viewMenu.add(zoomOut);
+        viewMenu.addSeparator();
+        viewMenu.add(resetView);
+        viewMenu.add(centerView);
+        
+        JMenu simMenu = createEmojiMenu("SIM Προσομοίωση");
+        
+        JMenuItem startFire = createEmojiMenuItem("FIRE Νέα Φωτιά", 0, 0);
+        startFire.addActionListener(e -> simulateRandomFire());
+        
+        JMenuItem emergency = createEmojiMenuItem("ALERT Κατάσταση Έκτακτης Ανάγκης", 0, 0);
+        emergency.addActionListener(e -> startEmergency());
+        
+        JMenuItem clearAll = createEmojiMenuItem("CLEAR Καθαρισμός Όλων", 0, 0);
+        clearAll.addActionListener(e -> clearAllFires());
+        
+        simMenu.add(startFire);
+        simMenu.add(emergency);
+        simMenu.addSeparator();
+        simMenu.add(clearAll);
+        
+        menuBar.add(viewMenu);
+        menuBar.add(simMenu);
+        
+        setJMenuBar(menuBar);
+    }
+    
+    private JMenu createEmojiMenu(String text) {
+        JMenu menu = new JMenu(text);
+        menu.setForeground(TEXT_COLOR);
+        menu.setOpaque(true);
+        menu.setBackground(PANEL_COLOR);
+        
+        // ΚΛΕΙΔΙ: Χρησιμοποίησε primaryUIFont αντί για combinedFont
+        menu.setFont(primaryUIFont.deriveFont(Font.BOLD, 14f));
+        return menu;
     }
 
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος createGridPanel
-    private JPanel createGridPanel() {
-        JPanel gridPanel = new JPanel(new GridLayout(GRID_SIZE, GRID_SIZE, 2, 2));
-        gridPanel.setBorder(BorderFactory.createTitledBorder("🌲 Δάσος (5x5) - Πραγματικός Χρόνος"));
-        gridPanel.setBackground(Color.DARK_GRAY);
+    private JMenuItem createEmojiMenuItem(String text, int keyCode, int modifiers) {
+        JMenuItem item = new JMenuItem(text);
+        item.setForeground(TEXT_COLOR);
+        item.setBackground(PANEL_COLOR);
+        item.setOpaque(true);
         
-        // ΔΙΟΡΘΩΣΗ: Έλεγχος αν το gridCells έχει αρχικοποιηθεί
-        if (gridCells == null) {
-            System.err.println("⚠️ ΣΦΑΛΜΑ: gridCells δεν έχει αρχικοποιηθεί!");
-            initializeGrid(); // Αρχικοποίηση εδώ αν δεν έχει γίνει
+        // ΚΛΕΙΔΙ: Χρησιμοποίησε primaryUIFont αντί για combinedFont
+        item.setFont(primaryUIFont.deriveFont(14f));
+        if (keyCode != 0) {
+            item.setAccelerator(KeyStroke.getKeyStroke(keyCode, modifiers));
         }
-        
-        // Προσθήκη των cells στο grid
-        for (int i = 0; i < GRID_SIZE; i++) {
-            for (int j = 0; j < GRID_SIZE; j++) {
-                if (gridCells[i][j] != null) {
-                    gridPanel.add(gridCells[i][j]);
-                } else {
-                    // Fallback panel αν κάτι πάει στραβά
-                    JPanel fallbackPanel = new JPanel();
-                    fallbackPanel.setBackground(Color.GREEN);
-                    fallbackPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
-                    fallbackPanel.setPreferredSize(new Dimension(CELL_SIZE, CELL_SIZE));
-                    gridPanel.add(fallbackPanel);
-                }
-            }
-        }
-        
-        return gridPanel;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος createStatsPanel
-    private JPanel createStatsPanel() {
-        JPanel panel = new JPanel(new GridLayout(5, 1, 2, 2)); // 5 γραμμές
-        panel.setBorder(BorderFactory.createTitledBorder("📊 Διαθέσιμοι Πόροι"));
-        panel.setPreferredSize(new Dimension(0, 140)); // Μικρότερο ύψος
-        panel.setBackground(new Color(245, 245, 245));
-        
-        // Αρχικοποίηση labels
-        fireCountLabel = new JLabel("🔥 Ενεργές Εστίες: 0");
-        trucksLabel = new JLabel("🚒 Πυροσβεστικά: 4/4");
-        aircraftLabel = new JLabel("✈️ Αεροσκάφη: 2/2");
-        helicoptersLabel = new JLabel("🚁 Ελικόπτερα: 1/1");
-        crewsLabel = new JLabel("👥 Ομάδες: 6/6");
-        
-        // Styling με μικρότερα fonts
-        Font statsFont = getGreekSupportFont(11, Font.BOLD);
-        fireCountLabel.setFont(statsFont);
-        trucksLabel.setFont(statsFont);
-        aircraftLabel.setFont(statsFont);
-        helicoptersLabel.setFont(statsFont);
-        crewsLabel.setFont(statsFont);
-        
-        // Χρωματική κωδικοποίηση
-        fireCountLabel.setForeground(new Color(34, 139, 34)); // Πράσινο αρχικά
-        trucksLabel.setForeground(new Color(255, 140, 0));
-        aircraftLabel.setForeground(new Color(0, 191, 255));
-        helicoptersLabel.setForeground(new Color(138, 43, 226));
-        crewsLabel.setForeground(new Color(255, 215, 0));
-        
-        panel.add(fireCountLabel);
-        panel.add(trucksLabel);
-        panel.add(aircraftLabel);
-        panel.add(helicoptersLabel);
-        panel.add(crewsLabel);
-        
-        return panel;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος createLegendPanel
-    private JPanel createLegendPanel() {
-        JPanel panel = new JPanel(new GridLayout(4, 2, 2, 2)); // 4 σειρές, 2 στήλες
-        panel.setBorder(BorderFactory.createTitledBorder("🔑 Συμβολισμοί"));
-        panel.setPreferredSize(new Dimension(0, 120)); // Μικρότερο ύψος
-        panel.setBackground(new Color(250, 250, 250));
-        
-        // Προσθήκη συμβόλων σε συμπαγή μορφή
-        panel.add(createLegendItem("🌲", "Δέντρο", new Color(34, 139, 34)));
-        panel.add(createLegendItem("🔥", "Φωτιά", Color.RED));
-        panel.add(createLegendItem("💧", "Νερό", Color.BLUE));
-        panel.add(createLegendItem("🚒", "Πυροσβεστικό", new Color(255, 140, 0)));
-        panel.add(createLegendItem("✈️", "Αεροσκάφος", Color.CYAN));
-        panel.add(createLegendItem("🚁", "Ελικόπτερο", Color.MAGENTA));
-        panel.add(createLegendItem("👥", "Ομάδα", new Color(255, 215, 0)));
-        panel.add(createLegendItem("🌫️", "Σβησμένο", Color.GRAY));
-        
-        return panel;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος createLegendItem
-    private JPanel createLegendItem(String symbol, String text, Color color) {
-        JPanel item = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
-        JLabel symbolLabel = new JLabel(symbol);
-        symbolLabel.setFont(getGreekSupportFont(14, Font.BOLD));
-        JLabel textLabel = new JLabel(text);
-        textLabel.setForeground(color);
-        textLabel.setFont(new Font("Arial", Font.BOLD, 11));
-        item.add(symbolLabel);
-        item.add(textLabel);
         return item;
     }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος createLogPanel
-    private JPanel createLogPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBorder(BorderFactory.createTitledBorder("📋 Καταγραφή Γεγονότων"));
-        panel.setPreferredSize(new Dimension(0, 120)); // Μικρότερο ύψος
+    
+    private JButton createEmojiButton(String text, String tooltip, Color color) {
+        JButton button = new JButton(text);
+        button.setToolTipText(tooltip);
+        button.setBackground(color);
+        button.setForeground(Color.WHITE);
+        button.setBorder(new LineBorder(color.darker(), 1));
+        button.setFocusPainted(false);
         
-        logArea = new JTextArea(6, 80); // Λιγότερες γραμμές
-        logArea.setEditable(false);
-        logArea.setFont(new Font("Consolas", Font.PLAIN, 10)); // Μικρότερο font
-        logArea.setBackground(Color.BLACK);
-        logArea.setForeground(Color.GREEN);
-        logArea.setText("🚀 Σύστημα προσομοίωσης δασικής πυρκαγιάς ενεργοποιήθηκε!\n");
+        // ΚΛΕΙΔΙ: Χρησιμοποίησε primaryUIFont αντί για combinedFont
+        button.setFont(primaryUIFont.deriveFont(Font.BOLD, 16f));
+        button.setPreferredSize(new Dimension(50, 30));
         
-        JScrollPane scrollPane = new JScrollPane(logArea);
-        scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
-        scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
-        
-        panel.add(scrollPane, BorderLayout.CENTER);
-        
-        return panel;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος createStatusPanel
-    private JPanel createStatusPanel() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        panel.setBackground(Color.LIGHT_GRAY);
-        panel.setBorder(BorderFactory.createLoweredBevelBorder());
-        
-        statusLabel = new JLabel("🟢 Σύστημα έτοιμο - Αναμονή για γεγονότα...");
-        statusLabel.setFont(new Font("Dialog", Font.BOLD, 14));
-        statusLabel.setForeground(Color.BLACK);
-        
-        panel.add(statusLabel);
-        
-        return panel;
-    }
-
-    // ΠΡΟΣΘΗΚΗ: Λείπουσα μέθοδος getGreekSupportFont
-    private Font getGreekSupportFont(int size, int style) {
-        String[] fontNames = {
-            "Noto Sans",          // Windows 10/11 default - καλύτερη υποστήριξη Unicode
-            "Tahoma",            // Windows classic - αξιόπιστο για ελληνικά
-            "Arial Unicode MS",  // Comprehensive Unicode support
-            "DejaVu Sans",       // Linux/Cross-platform
-            "Liberation Sans",   // Linux alternative
-            "Noto Sans",         // Google's Unicode font
-            "Dialog",            // Java default
-            "SansSerif"          // Final fallback
-        };
-        
-        String testGreek = "Αβγδεζηθικλμνξοπρστυφχψω ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ";
-        
-        for (String fontName : fontNames) {
-            Font font = new Font(fontName, style, size);
-            if (font.canDisplayUpTo(testGreek) == -1) {
-                return font;
+        button.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                button.setBackground(color.brighter());
             }
+            
+            @Override
+            public void mouseExited(MouseEvent e) {
+                button.setBackground(color);
+            }
+        });
+        
+        return button;
+    }
+    
+    private JLabel createEmojiLabel(String text, int style, float size) {
+    JLabel label = new JLabel(text);
+    label.setForeground(TEXT_COLOR);
+    
+    // ΚΛΕΙΔΙ: Χρησιμοποίησε primaryUIFont αντί για combinedFont
+    label.setFont(primaryUIFont.deriveFont(style, size));
+    return label;
+}
+    
+    private JButton createEmojiControlButton(String text, String tooltip, Color color) {
+    JButton button = new JButton(text);
+    button.setToolTipText(tooltip);
+    button.setBackground(color);
+    button.setForeground(Color.WHITE);
+    button.setBorder(new LineBorder(color.darker(), 1));
+    button.setFocusPainted(false);
+    
+    // ΚΛΕΙΔΙ: Χρησιμοποίησε primaryUIFont αντί για combinedFont
+    button.setFont(primaryUIFont.deriveFont(Font.BOLD, 14f));
+    button.setPreferredSize(new Dimension(250, 45));
+    
+    button.addMouseListener(new MouseAdapter() {
+        @Override
+        public void mouseEntered(MouseEvent e) {
+            button.setBackground(color.brighter());
         }
         
-        // Αν τίποτα δεν δουλεύει, δημιουργία custom font
-        return createFallbackFont(size, style);
+        @Override
+        public void mouseExited(MouseEvent e) {
+            button.setBackground(color);
+        }
+    });
+    
+    return button;
+}
+    
+    private JLabel createEmojiInfoLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(TEXT_COLOR);
+        
+        // ΚΛΕΙΔΙ: Χρησιμοποίησε primaryUIFont αντί για combinedFont
+        label.setFont(primaryUIFont.deriveFont(14f));
+        label.setPreferredSize(new Dimension(200, 20));
+        return label;
     }
-
-    // ΠΡΟΣΘΗΚΗ: Δημιουργία fallback font
-    private Font createFallbackFont(int size, int style) {
-        // Προσπάθεια για system font
-        Font systemFont = new Font(Font.DIALOG, style, size);
-        return systemFont;
-    }
-
-    // ΔΙΟΡΘΩΣΗ: Σωστή υλοποίηση updateResourceStats
-    public void updateResourceStats(int availableTrucks, int totalTrucks, 
-                                   int availableAircraft, int totalAircraft,
-                                   int availableHelicopters, int totalHelicopters,
-                                   int availableCrews, int totalCrews,
-                                   int activeFires) {
-        SwingUtilities.invokeLater(() -> {
-            if (fireCountLabel != null) {
-                fireCountLabel.setText("🔥 Ενεργές Εστίες: " + activeFires);
-                fireCountLabel.setForeground(activeFires > 0 ? Color.RED : new Color(34, 139, 34));
+    
+    private void createGridPanel() {
+        gridPanel = new GridPanel();
+        scrollPane = new JScrollPane(gridPanel);
+        scrollPane.setPreferredSize(new Dimension(800, 600));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        scrollPane.getHorizontalScrollBar().setUnitIncrement(16);
+        scrollPane.setBackground(BACKGROUND_COLOR);
+        scrollPane.setBorder(new LineBorder(BORDER_COLOR, 2));
+        
+        gridPanel.addMouseWheelListener(new MouseWheelListener() {
+            @Override
+            public void mouseWheelMoved(MouseWheelEvent e) {
+                if (e.isControlDown()) {
+                    if (e.getWheelRotation() < 0) {
+                        zoomIn();
+                    } else {
+                        zoomOut();
+                    }
+                }
             }
-            
-            if (trucksLabel != null) {
-                trucksLabel.setText("🚒 Διαθέσιμα Οχήματα: " + availableTrucks + "/" + totalTrucks);
-                trucksLabel.setForeground(availableTrucks > 0 ? new Color(34, 139, 34) : Color.RED);
+        });
+        
+        gridPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                handleGridClick(e);
             }
-            
-            if (aircraftLabel != null) {
-                aircraftLabel.setText("✈️ Διαθέσιμα Αεροσκάφη: " + availableAircraft + "/" + totalAircraft);
-                aircraftLabel.setForeground(availableAircraft > 0 ? new Color(34, 139, 34) : Color.RED);
-            }
-            
-            if (helicoptersLabel != null) {
-                helicoptersLabel.setText("🚁 Διαθέσιμα Ελικόπτερα: " + availableHelicopters + "/" + totalHelicopters);
-                helicoptersLabel.setForeground(availableHelicopters > 0 ? new Color(34, 139, 34) : Color.RED);
-            }
-            
-            if (crewsLabel != null) {
-                crewsLabel.setText("👥 Διαθέσιμες Ομάδες: " + availableCrews + "/" + totalCrews);
-                crewsLabel.setForeground(availableCrews > 0 ? new Color(34, 139, 34) : Color.RED);
+        });
+        
+        gridPanel.addMouseMotionListener(new MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                updateCoordinateDisplay(e);
             }
         });
     }
     
-    // Προσθέστε αυτή τη μέθοδο:
-
-    // ΠΡΟΣΘΗΚΗ: Απλή μέθοδος για ενημέρωση ενός στατιστικού
-    public void updateSingleStat(String statType, int available, int total) {
+    private JPanel createLeftPanel() {
+        JPanel leftPanel = new JPanel(new BorderLayout());
+        leftPanel.setBackground(BACKGROUND_COLOR);
+        
+        JPanel gridContainer = new JPanel(new BorderLayout());
+        gridContainer.setBackground(BACKGROUND_COLOR);
+        gridContainer.add(createGridToolbar(), BorderLayout.NORTH);
+        gridContainer.add(scrollPane, BorderLayout.CENTER);
+        gridContainer.add(createControlPanel(), BorderLayout.SOUTH);
+        
+        leftPanel.add(gridContainer, BorderLayout.CENTER);
+        return leftPanel;
+    }
+    
+    private JPanel createRightPanel() {
+        JPanel rightPanel = new JPanel(new BorderLayout());
+        rightPanel.setPreferredSize(new Dimension(400, 0));
+        rightPanel.setBackground(BACKGROUND_COLOR);
+        
+        rightPanel.add(createWeatherPanel(), BorderLayout.NORTH);
+        
+        JPanel centerPanel = new JPanel(new GridLayout(2, 1, 5, 5));
+        centerPanel.setBackground(BACKGROUND_COLOR);
+        centerPanel.add(createStatsPanel());
+        centerPanel.add(createLegendPanel());
+        rightPanel.add(centerPanel, BorderLayout.CENTER);
+        
+        rightPanel.add(createLogPanel(), BorderLayout.SOUTH);
+        
+        return rightPanel;
+    }
+    
+    private JPanel createGridToolbar() {
+        JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        toolbar.setBackground(PANEL_COLOR);
+        toolbar.setBorder(new LineBorder(BORDER_COLOR, 1));
+        
+        JButton zoomInBtn = createEmojiButton("+", "Μεγέθυνση", ACCENT_COLOR);
+        zoomInBtn.addActionListener(e -> zoomIn());
+        
+        JButton zoomOutBtn = createEmojiButton("-", "Σμίκρυνση", ACCENT_COLOR);
+        zoomOutBtn.addActionListener(e -> zoomOut());
+        
+        JButton resetBtn = createEmojiButton("HOME", "Επαναφορά Προβολής", INFO_COLOR);
+        resetBtn.addActionListener(e -> resetView());
+        
+        zoomLabel = createEmojiLabel("ZOOM Zoom: 100%", Font.BOLD, 12f);
+        coordinatesLabel = createEmojiLabel("POS Συντεταγμένες: (0, 0)", Font.PLAIN, 12f);
+        
+        toolbar.add(zoomInBtn);
+        toolbar.add(zoomOutBtn);
+        toolbar.add(resetBtn);
+        toolbar.add(Box.createHorizontalStrut(20));
+        toolbar.add(zoomLabel);
+        toolbar.add(Box.createHorizontalStrut(20));
+        toolbar.add(coordinatesLabel);
+        
+        return toolbar;
+    }
+    
+    private JPanel createControlPanel() {
+    JPanel controlPanel = new JPanel(new GridBagLayout());
+    controlPanel.setBackground(PANEL_COLOR);
+    controlPanel.setBorder(BorderFactory.createCompoundBorder(
+        new LineBorder(BORDER_COLOR, 1),
+        new EmptyBorder(10, 10, 10, 10)
+    ));
+    
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.insets = new Insets(5, 5, 5, 5);
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    
+    JButton fireBtn = createEmojiControlButton("FIRE Νέα Φωτιά", "Δημιουργία νέας φωτιάς", DANGER_COLOR);
+    fireBtn.addActionListener(e -> simulateRandomFire());
+    
+    emergencyBtn = createEmojiControlButton("ALERT Έκτακτη Ανάγκη", "Κήρυξη κατάστασης έκτακτης ανάγκης", WARNING_COLOR);
+    emergencyBtn.addActionListener(e -> startEmergency());
+    
+    stopEmergencyBtn = createEmojiControlButton("STOP Τερματισμός Έκτακτης", "Τερματισμός κατάστασης έκτακτης ανάγκης", INFO_COLOR);
+    stopEmergencyBtn.setEnabled(false);
+    stopEmergencyBtn.addActionListener(e -> stopEmergency());
+    
+    JButton clearBtn = createEmojiControlButton("CLEAR Καθαρισμός", "Καθαρισμός όλων των φωτιών", ACCENT_COLOR);
+    clearBtn.addActionListener(e -> clearAllFires());
+    
+    JButton weatherBtn = createEmojiControlButton("WEATHER Ενημέρωση Καιρού", "Ενημέρωση καιρικών συνθηκών", INFO_COLOR);
+    weatherBtn.addActionListener(e -> simulateWeatherUpdate());
+    
+    gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+    controlPanel.add(fireBtn, gbc);
+    
+    gbc.gridy = 1;
+    controlPanel.add(emergencyBtn, gbc);
+    
+    gbc.gridy = 2;
+    controlPanel.add(stopEmergencyBtn, gbc);
+    
+    gbc.gridy = 3;
+    controlPanel.add(clearBtn, gbc);
+    
+    gbc.gridy = 4;
+    controlPanel.add(weatherBtn, gbc);
+    
+    return controlPanel;
+}
+    
+    private JPanel createWeatherPanel() {
+        weatherPanel = new JPanel(new GridBagLayout());
+        weatherPanel.setBackground(PANEL_COLOR);
+        weatherPanel.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_COLOR, 1),
+            new EmptyBorder(10, 10, 10, 10)
+        ));
+        
+        JLabel titleLabel = createEmojiLabel("WEATHER Καιρικές Συνθήκες", Font.BOLD, 16f);
+        
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 5, 2, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        
+        windSpeedLabel = createEmojiInfoLabel("WIND Άνεμος: 2.5 m/s");
+        windDirectionLabel = createEmojiInfoLabel("DIR Διεύθυνση: ΒΑ");
+        temperatureLabel = createEmojiInfoLabel("TEMP Θερμοκρασία: 28°C");
+        humidityLabel = createEmojiInfoLabel("HUM Υγρασία: 45%");
+        weatherConditionLabel = createEmojiInfoLabel("COND Κατάσταση: Αίθριος");
+        
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        weatherPanel.add(titleLabel, gbc);
+        
+        gbc.gridwidth = 1; gbc.gridy = 1;
+        weatherPanel.add(windSpeedLabel, gbc);
+        
+        gbc.gridy = 2;
+        weatherPanel.add(windDirectionLabel, gbc);
+        
+        gbc.gridy = 3;
+        weatherPanel.add(temperatureLabel, gbc);
+        
+        gbc.gridy = 4;
+        weatherPanel.add(humidityLabel, gbc);
+        
+        gbc.gridy = 5;
+        weatherPanel.add(weatherConditionLabel, gbc);
+        
+        return weatherPanel;
+    }
+    
+    private JPanel createStatsPanel() {
+        statsPanel = new JPanel(new GridBagLayout());
+        statsPanel.setBackground(PANEL_COLOR);
+        statsPanel.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_COLOR, 1),
+            new EmptyBorder(10, 10, 10, 10)
+        ));
+        
+        JLabel titleLabel = createEmojiLabel("STATS Πόροι Πυρόσβεσης", Font.BOLD, 16f);
+        
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 5, 2, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        
+        fireCountLabel = createEmojiInfoLabel("FIRE Ενεργές φωτιές: 0");
+        trucksLabel = createEmojiInfoLabel("TRUCK Οχήματα: 4/4");
+        aircraftLabel = createEmojiInfoLabel("PLANE Αεροσκάφη: 2/2");
+        helicoptersLabel = createEmojiInfoLabel("HELI Ελικόπτερα: 1/1");
+        crewsLabel = createEmojiInfoLabel("CREW Ομάδες: 6/6");
+        
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        statsPanel.add(titleLabel, gbc);
+        
+        gbc.gridwidth = 1; gbc.gridy = 1;
+        statsPanel.add(fireCountLabel, gbc);
+        
+        gbc.gridy = 2;
+        statsPanel.add(trucksLabel, gbc);
+        
+        gbc.gridy = 3;
+        statsPanel.add(aircraftLabel, gbc);
+        
+        gbc.gridy = 4;
+        statsPanel.add(helicoptersLabel, gbc);
+        
+        gbc.gridy = 5;
+        statsPanel.add(crewsLabel, gbc);
+        
+        return statsPanel;
+    }
+    
+    private JPanel createLegendPanel() {
+        JPanel legendPanel = new JPanel(new GridBagLayout());
+        legendPanel.setBackground(PANEL_COLOR);
+        legendPanel.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_COLOR, 1),
+            new EmptyBorder(10, 10, 10, 10)
+        ));
+        
+        JLabel titleLabel = createEmojiLabel("MAP Συμβολισμοί", Font.BOLD, 16f);
+        
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(1, 5, 1, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        
+        String[] legendItems = {
+            "T Δέντρο", "F Φωτιά", "W Νερό", "R Πυροσβεστικό",
+            "A Αεροσκάφος", "H Ελικόπτερο", "G Ομάδα", "X Σβησμένο"
+        };
+        
+        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
+        legendPanel.add(titleLabel, gbc);
+        
+        gbc.gridwidth = 1;
+        for (int i = 0; i < legendItems.length; i++) {
+            gbc.gridx = 0;
+            gbc.gridy = i + 1;
+            JLabel label = createEmojiInfoLabel(legendItems[i]);
+            label.setFont(combinedFont.deriveFont(13f));
+            legendPanel.add(label, gbc);
+        }
+        
+        return legendPanel;
+    }
+    
+   
+    
+    private JPanel createLogPanel() {
+        JPanel logPanel = new JPanel(new BorderLayout());
+        logPanel.setBackground(PANEL_COLOR);
+        logPanel.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER_COLOR, 1),
+            new EmptyBorder(5, 5, 5, 5)
+        ));
+        
+        JLabel titleLabel = createEmojiLabel("LOG Αρχείο Καταγραφής", Font.BOLD, 16f);
+        
+        logArea = new JTextArea(10, 30);
+        logArea.setEditable(false);
+        logArea.setFont(combinedFont.deriveFont(12f));
+        logArea.setBackground(BACKGROUND_COLOR);
+        logArea.setForeground(TEXT_COLOR);
+        logArea.setCaretColor(TEXT_COLOR);
+        logArea.setLineWrap(true);
+        logArea.setWrapStyleWord(true);
+        
+        JScrollPane logScroll = new JScrollPane(logArea);
+        logScroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+        logScroll.setBackground(BACKGROUND_COLOR);
+        logScroll.setBorder(new LineBorder(BORDER_COLOR, 1));
+        
+        JButton clearLogBtn = createEmojiButton("DEL", "Καθαρισμός αρχείου καταγραφής", DANGER_COLOR);
+        clearLogBtn.addActionListener(e -> {
+            logArea.setText("");
+            addLog("LOG Αρχείο καταγραφής καθαρίστηκε");
+        });
+        
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setBackground(PANEL_COLOR);
+        topPanel.add(titleLabel, BorderLayout.WEST);
+        topPanel.add(clearLogBtn, BorderLayout.EAST);
+        
+        logPanel.add(topPanel, BorderLayout.NORTH);
+        logPanel.add(logScroll, BorderLayout.CENTER);
+        
+        return logPanel;
+    }
+    
+    // Emergency system methods
+    private void startEmergency() {
+        if (!emergencyActive) {
+            emergencyActive = true;
+            emergencyBtn.setEnabled(false);
+            stopEmergencyBtn.setEnabled(true);
+            
+            addLog("🚨 ΚΑΤΑΣΤΑΣΗ ΕΚΤΑΚΤΗΣ ΑΝΑΓΚΗΣ ΚΗΡΥΧΘΗΚΕ!");
+            updateStatus("🚨 ΕΚΤΑΚΤΗ ΑΝΑΓΚΗ - Δημιουργία πολλαπλών φωτιών");
+            
+            emergencyTimer = new Timer(3000, e -> createEmergencyFire());
+            emergencyTimer.start();
+            
+            // Create initial fires
+            for (int i = 0; i < 5; i++) {
+                createEmergencyFire();
+            }
+        }
+    }
+    
+    private void stopEmergency() {
+        if (emergencyActive) {
+            emergencyActive = false;
+            emergencyBtn.setEnabled(true);
+            stopEmergencyBtn.setEnabled(false);
+            
+            if (emergencyTimer != null) {
+                emergencyTimer.stop();
+                emergencyTimer = null;
+            }
+            
+            addLog("✅ Κατάσταση έκτακτης ανάγκης ΤΕΡΜΑΤΙΣΤΗΚΕ");
+            updateStatus("🟢 Κανονική λειτουργία - Έκτακτη ανάγκη τερματίστηκε");
+        }
+    }
+    
+    private void createEmergencyFire() {
+        Random rand = new Random();
+        int x = 1 + rand.nextInt(GRID_SIZE);
+        int y = 1 + rand.nextInt(GRID_SIZE);
+        
+        String key = x + "," + y;
+        CellState existing = cellStates.get(key);
+        if (existing == null || existing.type != CellType.FIRE) {
+            startFireAt(x, y);
+            addLog("🚨 ΕΚΤΑΚΤΗ ΦΩΤΙΑ στη θέση (" + x + ", " + y + ")");
+        }
+    }
+    
+    // Enhanced Grid Panel Class with Combined Font Rendering
+    private class GridPanel extends JPanel {
+        
+        public GridPanel() {
+            setBackground(Color.WHITE);
+            setPreferredSize(new Dimension(GRID_SIZE * cellSize, GRID_SIZE * cellSize));
+        }
+        
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2d = (Graphics2D) g.create();
+            
+            // Enhanced rendering hints for emoji support
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2d.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
+            g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+            
+            Rectangle visibleRect = getVisibleRect();
+            int startX = Math.max(1, visibleRect.x / cellSize);
+            int endX = Math.min(GRID_SIZE, (visibleRect.x + visibleRect.width) / cellSize + 1);
+            int startY = Math.max(1, visibleRect.y / cellSize);
+            int endY = Math.min(GRID_SIZE, (visibleRect.y + visibleRect.height) / cellSize + 1);
+            
+            for (int x = startX; x <= endX; x++) {
+                for (int y = startY; y <= endY; y++) {
+                    drawCell(g2d, x, y);
+                }
+            }
+            
+            if (cellSize >= 8) {
+                drawGridLines(g2d, startX, endX, startY, endY);
+            }
+            
+            g2d.dispose();
+        }
+        
+        private void drawCell(Graphics2D g2d, int x, int y) {
+            String key = x + "," + y;
+            CellState state = cellStates.get(key);
+            
+            if (state == null) state = new CellState(CellType.EMPTY);
+            
+            int pixelX = (x - 1) * cellSize;
+            int pixelY = (y - 1) * cellSize;
+            
+            g2d.setColor(getCellColor(state));
+            g2d.fillRect(pixelX, pixelY, cellSize, cellSize);
+            
+            if (cellSize >= 8) {
+                drawCellIcon(g2d, pixelX, pixelY, state);
+            }
+        }
+        
+        private void drawGridLines(Graphics2D g2d, int startX, int endX, int startY, int endY) {
+            g2d.setColor(new Color(200, 200, 200, 100));
+            g2d.setStroke(new BasicStroke(0.5f));
+            
+            for (int x = startX; x <= endX; x++) {
+                int pixelX = (x - 1) * cellSize;
+                g2d.drawLine(pixelX, (startY - 1) * cellSize, pixelX, endY * cellSize);
+            }
+            
+            for (int y = startY; y <= endY; y++) {
+                int pixelY = (y - 1) * cellSize;
+                g2d.drawLine((startX - 1) * cellSize, pixelY, endX * cellSize, pixelY);
+            }
+        }
+        
+        private void drawCellIcon(Graphics2D g2d, int x, int y, CellState state) {
+            String icon = getCellIcon(state);
+            if (icon != null && !icon.isEmpty()) {
+                g2d.setColor(Color.BLACK);
+                
+                // Use emoji font for better emoji rendering
+                g2d.setFont(emojiFont.deriveFont(Font.PLAIN, Math.min(cellSize - 1, 16)));
+                FontMetrics fm = g2d.getFontMetrics();
+                
+                int iconX = x + (cellSize - fm.stringWidth(icon)) / 2;
+                int iconY = y + (cellSize + fm.getAscent()) / 2;
+                
+                // Enhanced emoji rendering
+                g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                g2d.drawString(icon, iconX, iconY);
+            }
+        }
+        
+        @Override
+        public Dimension getPreferredSize() {
+            return new Dimension(GRID_SIZE * cellSize, GRID_SIZE * cellSize);
+        }
+    }
+    
+    // Utility Methods
+    private Color getCellColor(CellState state) {
+        switch (state.type) {
+            case TREE: return new Color(34, 139, 34);
+            case FIRE: return new Color(255, Math.max(0, 255 - state.intensity * 20), 0);
+            case BURNING_TREE: return new Color(255, 165 - state.intensity * 10, 0);
+            case DESTROYED: return new Color(64, 64, 64);
+            case WATER: return new Color(0, 191, 255);
+            case FIREFIGHTER: return Color.RED;
+            case AIRCRAFT: return Color.BLUE;
+            case HELICOPTER: return Color.MAGENTA;
+            case GROUND_CREW: return Color.ORANGE;
+            default: return new Color(240, 240, 240);
+        }
+    }
+    
+    private String getCellIcon(CellState state) {
+        switch (state.type) {
+            case TREE: return "T";        // Αντί για 🌲
+            case FIRE: return "F";        // Αντί για 🔥
+            case BURNING_TREE: return "B"; // Αντί για 🔥
+            case DESTROYED: return "X";    // Αντί για 🌫️
+            case WATER: return "W";        // Αντί για 💧
+            case FIREFIGHTER: return "R"; // Αντί για 🚒
+            case AIRCRAFT: return "A";     // Αντί για ✈️
+            case HELICOPTER: return "H";   // Αντί για 🚁
+            case GROUND_CREW: return "G";  // Αντί για 👥
+            default: return "";
+        }
+    }
+    
+    // Event Handlers
+    private void handleGridClick(MouseEvent e) {
+        int gridX = (e.getX() / cellSize) + 1;
+        int gridY = (e.getY() / cellSize) + 1;
+        
+        if (gridX >= 1 && gridX <= GRID_SIZE && gridY >= 1 && gridY <= GRID_SIZE) {
+            if (SwingUtilities.isLeftMouseButton(e)) {
+                startFireAt(gridX, gridY);
+            } else if (SwingUtilities.isRightMouseButton(e)) {
+                placeTreeAt(gridX, gridY);
+            }
+        }
+    }
+    
+    private void updateCoordinateDisplay(MouseEvent e) {
+        int gridX = (e.getX() / cellSize) + 1;
+        int gridY = (e.getY() / cellSize) + 1;
+        
+        if (gridX >= 1 && gridX <= GRID_SIZE && gridY >= 1 && gridY <= GRID_SIZE) {
+            coordinatesLabel.setText("POS Συντεταγμένες: (" + gridX + ", " + gridY + ")");
+        }
+    }
+    
+    // Zoom and View Controls
+    private void zoomIn() {
+        if (cellSize < MAX_CELL_SIZE) {
+            cellSize = Math.min(MAX_CELL_SIZE, cellSize + 1);
+            updateZoom();
+        }
+    }
+    
+    private void zoomOut() {
+        if (cellSize > MIN_CELL_SIZE) {
+            cellSize = Math.max(MIN_CELL_SIZE, cellSize - 1);
+            updateZoom();
+        }
+    }
+    
+    private void resetView() {
+        cellSize = DEFAULT_CELL_SIZE;
+        updateZoom();
+        centerView();
+    }
+    
+    private void centerView() {
         SwingUtilities.invokeLater(() -> {
-            switch (statType.toLowerCase()) {
-                case "trucks":
-                    if (trucksLabel != null) {
-                        trucksLabel.setText("🚒 Διαθέσιμα Οχήματα: " + available + "/" + total);
-                        trucksLabel.setForeground(available > 0 ? new Color(34, 139, 34) : Color.RED);
-                    }
-                    break;
-                case "aircraft":
-                    if (aircraftLabel != null) {
-                        aircraftLabel.setText("✈️ Διαθέσιμα Αεροσκάφη: " + available + "/" + total);
-                        aircraftLabel.setForeground(available > 0 ? new Color(34, 139, 34) : Color.RED);
-                    }
-                    break;
-                case "helicopters":
-                    if (helicoptersLabel != null) {
-                        helicoptersLabel.setText("🚁 Διαθέσιμα Ελικόπτερα: " + available + "/" + total);
-                        helicoptersLabel.setForeground(available > 0 ? new Color(34, 139, 34) : Color.RED);
-                    }
-                    break;
-                case "crews":
-                    if (crewsLabel != null) {
-                        crewsLabel.setText("👥 Διαθέσιμες Ομάδες: " + available + "/" + total);
-                        crewsLabel.setForeground(available > 0 ? new Color(34, 139, 34) : Color.RED);
-                    }
-                    break;
-                case "fires":
-                    if (fireCountLabel != null) {
-                        fireCountLabel.setText("🔥 Ενεργές Εστίες: " + available);
-                        fireCountLabel.setForeground(available > 0 ? Color.RED : new Color(34, 139, 34));
-                    }
-                    break;
+            JViewport viewport = scrollPane.getViewport();
+            Dimension viewSize = viewport.getExtentSize();
+            Dimension gridSize = gridPanel.getPreferredSize();
+            
+            int x = Math.max(0, (gridSize.width - viewSize.width) / 2);
+            int y = Math.max(0, (gridSize.height - viewSize.height) / 2);
+            
+            viewport.setViewPosition(new Point(x, y));
+        });
+    }
+    
+    private void updateZoom() {
+        gridPanel.setPreferredSize(new Dimension(GRID_SIZE * cellSize, GRID_SIZE * cellSize));
+        gridPanel.revalidate();
+        gridPanel.repaint();
+        
+        zoomFactor = (double) cellSize / DEFAULT_CELL_SIZE;
+        zoomLabel.setText("📐 Zoom: " + Math.round(zoomFactor * 100) + "%");
+    }
+    
+    // Initialize grid with empty state
+    private void initializeGrid() {
+        for (int x = 1; x <= GRID_SIZE; x++) {
+            for (int y = 1; y <= GRID_SIZE; y++) {
+                cellStates.put(x + "," + y, new CellState(CellType.EMPTY));
+            }
+        }
+        updateStatsDisplay();
+    }
+
+    // Updates the statistics display labels
+    private void updateStatsDisplay() {
+        SwingUtilities.invokeLater(() -> {
+            if (fireCountLabel != null) {
+                fireCountLabel.setText("FIRE Ενεργές φωτιές: " + activeFires);
             }
         });
+    }
+    
+    private JPanel createStatusBar() {
+        JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        statusBar.setBackground(PANEL_COLOR);
+        statusBar.setBorder(new LineBorder(BORDER_COLOR, 1));
+        
+        statusLabel = createEmojiLabel("OK Σύστημα έτοιμο - Grid: 150x150", Font.BOLD, 12f);
+        statusBar.add(statusLabel);
+        
+        return statusBar;
+    }
+    
+    // Simulation Controls - FIXED: Only start fires manually
+    private void simulateRandomFire() {
+        Random rand = new Random();
+        int x = 1 + rand.nextInt(GRID_SIZE);
+        int y = 1 + rand.nextInt(GRID_SIZE);
+        
+        // Ensure we don't start fire on existing fire
+        String key = x + "," + y;
+        CellState existing = cellStates.get(key);
+        
+        int attempts = 0;
+        while (existing != null && existing.type == CellType.FIRE && attempts < 10) {
+            x = 1 + rand.nextInt(GRID_SIZE);
+            y = 1 + rand.nextInt(GRID_SIZE);
+            key = x + "," + y;
+            existing = cellStates.get(key);
+            attempts++;
+        }
+        
+        startFireAt(x, y);
+    }
+    
+    private void startFireAt(int x, int y) {
+        String key = x + "," + y;
+        CellState existing = cellStates.get(key);
+        
+        // Only start fire if location is empty or has a tree
+        if (existing == null || existing.type == CellType.EMPTY || existing.type == CellType.TREE) {
+            cellStates.put(key, new CellState(CellType.FIRE, 5));
+            activeFireLocations.add(key);
+            activeFires++;
+            
+            addLog("🔥 Φωτιά ξεκίνησε στη θέση (" + x + ", " + y + ")");
+            gridPanel.repaint();
+            updateStatsDisplay();
+        }
+    }
+    
+    private void placeTreeAt(int x, int y) {
+        String key = x + "," + y;
+        CellState current = cellStates.get(key);
+        
+        if (current == null || current.type == CellType.EMPTY || current.type == CellType.DESTROYED) {
+            cellStates.put(key, new CellState(CellType.TREE));
+            totalTrees++;
+            
+            addLog("🌲 Δέντρο τοποθετήθηκε στη θέση (" + x + ", " + y + ")");
+            gridPanel.repaint();
+            updateStatsDisplay();
+        }
+    }
+    
+    private void clearAllFires() {
+        // Stop emergency if active
+        if (emergencyActive) {
+            stopEmergency();
+        }
+        
+        // Clear all fires and restore previous states
+        for (Map.Entry<String, CellState> entry : cellStates.entrySet()) {
+            CellState state = entry.getValue();
+            if (state.type == CellType.FIRE || state.type == CellType.BURNING_TREE) {
+                entry.setValue(new CellState(CellType.DESTROYED));
+            }
+        }
+        
+        activeFireLocations.clear();
+        activeFires = 0;
+        burningTrees = 0;
+        
+        addLog("🧹 Όλες οι φωτιές καθαρίστηκαν");
+        gridPanel.repaint();
+        updateStatsDisplay();
+        updateStatus("🟢 Όλες οι φωτιές έχουν σβήσει");
+    }
+    
+    // FIXED: Proper fire extinguishing method
+    private void extinguishFireAt(int x, int y) {
+        String key = x + "," + y;
+        CellState state = cellStates.get(key);
+        
+        if (state != null && (state.type == CellType.FIRE || state.type == CellType.BURNING_TREE)) {
+            cellStates.put(key, new CellState(CellType.DESTROYED));
+            activeFireLocations.remove(key);
+            activeFires = Math.max(0, activeFires - 1);
+            
+            addLog("✅ Φωτιά σβήστηκε στη θέση (" + x + ", " + y + ")");
+            gridPanel.repaint();
+            updateStatsDisplay();
+        }
+    }
+    
+    // Update fire count from actual grid state
+    private void updateFireCount() {
+        int count = 0;
+        activeFireLocations.clear();
+        
+        for (Map.Entry<String, CellState> entry : cellStates.entrySet()) {
+            CellState state = entry.getValue();
+            if (state.type == CellType.FIRE || state.type == CellType.BURNING_TREE) {
+                activeFireLocations.add(entry.getKey());
+                count++;
+            }
+        }
+        
+        activeFires = count;
+    }
+    
+    // Weather simulation method
+    public void simulateWeatherUpdate() {
+        SwingUtilities.invokeLater(() -> {
+            Random rand = new Random();
+            
+            double windSpeed = 1.0 + rand.nextDouble() * 4.0;
+            String[] directions = {"Β", "ΒΑ", "Α", "ΝΑ", "Ν", "ΝΔ", "Δ", "ΒΔ"};
+            String windDirection = directions[rand.nextInt(directions.length)];
+            int temperature = 20 + rand.nextInt(20);
+            int humidity = 20 + rand.nextInt(60);
+            
+            String[] conditions = {"Αίθριος", "Αίθριος-Συννεφιά", "Συννεφιά", "Βροχή"};
+            String condition = conditions[rand.nextInt(conditions.length)];
+            
+            windSpeedLabel.setText("WIND Άνεμος: " + String.format("%.1f", windSpeed) + " m/s");
+            windDirectionLabel.setText("DIR Διεύθυνση: " + windDirection);
+            temperatureLabel.setText("TEMP Θερμοκρασία: " + temperature + "°C");
+            humidityLabel.setText("HUM Υγρασία: " + humidity + "%");
+            weatherConditionLabel.setText("COND Κατάσταση: " + condition);
+        });
+    }
+    
+    public void updateResourceStats(int totalTrucks, int availableTrucks, 
+                                  int totalAircraft, int availableAircraft,
+                                  int totalHelicopters, int availableHelicopters,
+                                  int totalCrews, int availableCrews, int fires) {
+        SwingUtilities.invokeLater(() -> {
+            if (fireCountLabel != null) {
+                fireCountLabel.setText("FIRE Ενεργές φωτιές: " + fires);
+            }
+            if (trucksLabel != null) {
+                trucksLabel.setText("TRUCK Οχήματα: " + availableTrucks + "/" + totalTrucks);
+            }
+            if (aircraftLabel != null) {
+                aircraftLabel.setText("PLANE Αεροσκάφη: " + availableAircraft + "/" + totalAircraft);
+            }
+            if (helicoptersLabel != null) {
+                helicoptersLabel.setText("HELI Ελικόπτερα: " + availableHelicopters + "/" + totalHelicopters);
+            }
+            if (crewsLabel != null) {
+                crewsLabel.setText("CREW Ομάδες: " + availableCrews + "/" + totalCrews);
+            }
+        });
+    }
+    
+    public void showEmergencyDialog() {
+        startEmergency();
+    }
+    
+    // Agent interface methods
+    public void showFireAt(int x, int y, int intensity) {
+        updateCell(x, y, "FIRE", intensity);
+        
+        String key = x + "," + y;
+        if (cellStates.get(key) == null || cellStates.get(key).type != CellType.FIRE) {
+            addLog("🔥 ΝΕΑ ΦΩΤΙΑ στη θέση (" + x + "," + y + ") - Ένταση: " + intensity);
+            updateStatus("🔴 ΕΝΕΡΓΗ ΠΥΡΚΑΙΑ - Θέση: (" + x + "," + y + ")");
+        }
+        
+        cellStates.put(key, new CellState(CellType.FIRE, intensity));
+        if (!activeFireLocations.contains(key)) {
+            activeFireLocations.add(key);
+            activeFires++;
+        }
+        gridPanel.repaint();
+    }
+    
+    public void updateCell(int x, int y, String state, int intensity) {
+        if (x < 1 || x > GRID_SIZE || y < 1 || y > GRID_SIZE) return;
+        
+        String key = x + "," + y;
+        CellType cellType;
+        
+        switch (state.toUpperCase()) {
+            case "FIRE": cellType = CellType.FIRE; break;
+            case "TREE": cellType = CellType.TREE; break;
+            case "WATER": cellType = CellType.WATER; break;
+            case "EXTINGUISHED": cellType = CellType.DESTROYED; break;
+            default: cellType = CellType.EMPTY;
+        }
+        
+        CellState oldState = cellStates.get(key);
+        cellStates.put(key, new CellState(cellType, intensity));
+        
+        // Update fire tracking
+        if (cellType == CellType.FIRE && !activeFireLocations.contains(key)) {
+            activeFireLocations.add(key);
+            activeFires++;
+        } else if (cellType != CellType.FIRE && activeFireLocations.contains(key)) {
+            activeFireLocations.remove(key);
+            activeFires = Math.max(0, activeFires - 1);
+        }
+        
+        gridPanel.repaint();
+    }
+    
+    public void updateCell(int x, int y, String state) {
+        updateCell(x, y, state, 0);
+    }
+    
+    // FIXED: Proper water drop and fire extinguishing
+    public void showWaterDropAt(int x, int y, String agentName) {
+        String key = x + "," + y;
+        CellState existing = cellStates.get(key);
+        
+        // Extinguish fire if present
+        if (existing != null && (existing.type == CellType.FIRE || existing.type == CellType.BURNING_TREE)) {
+            extinguishFireAt(x, y);
+            addLog("💧 " + agentName + " έσβησε φωτιά στη θέση (" + x + "," + y + ")");
+        } else {
+            // Show water drop temporarily
+            cellStates.put(key, new CellState(CellType.WATER));
+            addLog("💧 " + agentName + " ρίψη νερού στη θέση (" + x + "," + y + ")");
+            
+            SwingUtilities.invokeLater(() -> {
+                gridPanel.repaint();
+            });
+            
+            // Remove water visualization after 3 seconds
+            Timer timer = new Timer(3000, e -> {
+                cellStates.put(key, new CellState(CellType.EMPTY));
+                SwingUtilities.invokeLater(() -> gridPanel.repaint());
+            });
+            timer.setRepeats(false);
+            timer.start();
+        }
+    }
+    
+    public void showTruckAt(int x, int y, String truckName) {
+        showAgentAt(x, y, "FIRETRUCK", truckName);
+    }
+    
+    public void showHelicopterAt(int x, int y, String helicopterName) {
+        showAgentAt(x, y, "HELICOPTER", helicopterName);
+    }
+    
+    public void showAgentAt(int x, int y, String agentType, String agentName) {
+        if (x < 1 || x > GRID_SIZE || y < 1 || y > GRID_SIZE) return;
+        
+        String key = x + "," + y;
+        CellType type;
+        
+        switch (agentType.toUpperCase()) {
+            case "TRUCK":
+            case "FIRETRUCK": type = CellType.FIREFIGHTER; break;
+            case "AIRCRAFT": type = CellType.AIRCRAFT; break;
+            case "HELICOPTER": type = CellType.HELICOPTER; break;
+            case "CREW":
+            case "GROUNDCREW": type = CellType.GROUND_CREW; break;
+            default: return;
+        }
+        
+        CellState oldState = cellStates.get(key);
+        cellStates.put(key, new CellState(type));
+        addLog("📍 " + agentName + " στη θέση (" + x + "," + y + ")");
+        gridPanel.repaint();
+        
+        // Remove agent visualization after 3 seconds
+        Timer timer = new Timer(3000, e -> {
+            if (oldState != null) {
+                cellStates.put(key, oldState);
+            } else {
+                cellStates.put(key, new CellState(CellType.EMPTY));
+            }
+            gridPanel.repaint();
+        });
+        timer.setRepeats(false);
+        timer.start();
+    }
+    
+    public void showAgentAt(int x, int y, String agentName) {
+        // Determine agent type from name
+        String agentType = "TRUCK";
+        if (agentName.contains("aircraft")) agentType = "AIRCRAFT";
+        else if (agentName.contains("helicopter")) agentType = "HELICOPTER";
+        else if (agentName.contains("crew")) agentType = "CREW";
+        
+        showAgentAt(x, y, agentType, agentName);
+    }
+    
+    public void showExtinguishedAt(int x, int y) {
+        String key = x + "," + y;
+        cellStates.put(key, new CellState(CellType.DESTROYED));
+        addLog("✅ Κατάσβεση ολοκληρώθηκε στη θέση (" + x + "," + y + ")");
+        
+        SwingUtilities.invokeLater(() -> {
+            gridPanel.repaint();
+        });
+    }
+    
+    public void showAllExtinguished() {
+        SwingUtilities.invokeLater(() -> {
+            addLog("🌊 Όλες οι φωτιές έχουν σβήσει!");
+            updateStatus("🟢 Όλες οι εστίες κατασβέστηκαν");
+            
+            // Clear all fire states
+            for (Map.Entry<String, CellState> entry : cellStates.entrySet()) {
+                CellState state = entry.getValue();
+                if (state.type == CellType.FIRE || state.type == CellType.BURNING_TREE) {
+                    entry.setValue(new CellState(CellType.DESTROYED));
+                }
+            }
+            
+            activeFireLocations.clear();
+            activeFires = 0;
+            burningTrees = 0;
+            gridPanel.repaint();
+            updateStatsDisplay();
+        });
+    }
+    
+    public void showEmergencyDeclared() {
+        SwingUtilities.invokeLater(() -> {
+            addLog("🚨 ΚΑΤΑΣΤΑΣΗ ΕΚΤΑΚΤΗΣ ΑΝΑΓΚΗΣ ΚΗΡΥΧΘΗΚΕ!");
+            updateStatus("🚨 ΕΚΤΑΚΤΗ ΑΝΑΓΚΗ - Δημιουργία πολλαπλών φωτιών");
+        });
+    }
+    
+    public void showEmergencyEnded() {
+        SwingUtilities.invokeLater(() -> {
+            addLog("✅ Κατάσταση έκτακτης ανάγκης τερματίστηκε");
+            updateStatus("🟢 Κανονική λειτουργία - Έκτακτη ανάγκη τερματίστηκε");
+        });
+    }
+    
+    // Status updates for UI
+    public void updateStatus(String text) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText(text);
+        });
+    }
+    
+    // Log methods
+    public void addLog(String message) {
+        String timestamp = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
+        logArea.append("[" + timestamp + "] " + message + "\n");
+        
+        // Auto-scroll to bottom
+        SwingUtilities.invokeLater(() -> {
+            JScrollBar vertical = scrollPane.getVerticalScrollBar();
+            vertical.setValue(vertical.getMaximum());
+        });
+    }
+    
+    private void startRefreshTimer() {
+        refreshTimer = new Timer(1000, new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Refresh logic here if needed
+            }
+        });
+        refreshTimer.start();
     }
 }
