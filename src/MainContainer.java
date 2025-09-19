@@ -10,6 +10,30 @@ public class MainContainer {
     private static final int GRID_SIZE = 150;
     
     public static void main(String[] args) {
+        // Parse command line arguments for custom resource configuration
+        int numTrucks = 4, numAircraft = 2, numHelicopters = 1, numCrews = 6;
+        
+        if (args.length >= 5 && "custom".equals(args[0])) {
+            try {
+                numTrucks = Integer.parseInt(args[1]);
+                numAircraft = Integer.parseInt(args[2]);
+                numHelicopters = Integer.parseInt(args[3]);
+                numCrews = Integer.parseInt(args[4]);
+                
+                System.out.println("🚁 CUSTOM RESOURCE CONFIGURATION:");
+                System.out.println("├─ Πυροσβεστικά Οχήματα: " + numTrucks);
+                System.out.println("├─ Αεροσκάφη: " + numAircraft);
+                System.out.println("├─ Ελικόπτερα: " + numHelicopters);
+                System.out.println("└─ Επίγειες Ομάδες: " + numCrews);
+                
+            } catch (NumberFormatException e) {
+                System.err.println("❌ Invalid resource numbers, using defaults");
+            }
+        }
+        
+        // Set resource configuration in GUI before creating instance
+        FireSimulationGUI.setInitialResourceConfig(numTrucks, numAircraft, numHelicopters, numCrews);
+        
         try {
             Runtime rt = Runtime.instance();
             Profile p = new ProfileImpl();
@@ -37,7 +61,7 @@ public class MainContainer {
             System.out.println("Starting JADE with " + numTrees + " trees in 150x150 grid...");
             
             // Create core agents
-            createCoreAgents(container);
+            createCoreAgents(container, numTrucks, numAircraft, numHelicopters, numCrews);
             
             // Create tree agents (sample or full)
             if (numTrees == GRID_SIZE * GRID_SIZE) {
@@ -56,7 +80,7 @@ public class MainContainer {
         }
     }
     
-    private static void createCoreAgents(AgentContainer container) throws Exception {
+    private static void createCoreAgents(AgentContainer container, int numTrucks, int numAircraft, int numHelicopters, int numCrews) throws Exception {
         // Fire Control Agent
         AgentController fireControl = container.createNewAgent("firecontrol", 
             "agents.FireControlAgent", null);
@@ -68,13 +92,13 @@ public class MainContainer {
         weather.start();
         
         // Firefighting resources
-        for (int i = 1; i <= 5; i++) {
+        for (int i = 1; i <= numTrucks; i++) {
             AgentController truck = container.createNewAgent("truck" + i, 
                 "agents.FireTruckAgent", null);
             truck.start();
         }
         
-        for (int i = 1; i <= 3; i++) {
+        for (int i = 1; i <= numAircraft; i++) {
             AgentController aircraft = container.createNewAgent("aircraft" + i, 
                 "agents.AircraftAgent", null);
             aircraft.start();
@@ -86,7 +110,7 @@ public class MainContainer {
         
         // Ground crews
         String[] specialties = {"suppression", "prevention", "mop-up"};
-        for (int i = 1; i <= 6; i++) {
+        for (int i = 1; i <= numCrews; i++) {
             String specialty = specialties[(i-1) % specialties.length];
             AgentController crew = container.createNewAgent("crew" + i, 
                 "agents.GroundCrewAgent", new Object[]{specialty});

@@ -23,6 +23,50 @@
       }
     },
     {
+      "label": "Run JADE 150x150 Custom Resources",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set /p TRUCKS=\"Πόσα πυροσβεστικά οχήματα θέλετε (1-20): \" && set /p AIRCRAFT=\"Πόσα αεροσκάφη θέλετε (1-10): \" && set /p HELICOPTERS=\"Πόσα ελικόπτερα θέλετε (1-10): \" && set /p CREWS=\"Πόσες επίγειες ομάδες θέλετε (1-50): \" && echo Δημιουργία με %TRUCKS% οχήματα, %AIRCRAFT% αεροσκάφη, %HELICOPTERS% ελικόπτερα, %CREWS% ομάδες && chcp 65001 && java -Xmx8g -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar MainContainer custom %TRUCKS% %AIRCRAFT% %HELICOPTERS% %CREWS%"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
+      "label": "Run JADE 150x150 Small Resources (2-1-1-3)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "echo Μικρή διάταξη: 2 οχήματα, 1 αεροσκάφος, 1 ελικόπτερο, 3 ομάδες && chcp 65001 && java -Xmx4g -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar MainContainer custom 2 1 1 3"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
+      "label": "Run JADE 150x150 Medium Resources (4-2-1-6)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "echo Μεσαία διάταξη: 4 οχήματα, 2 αεροσκάφη, 1 ελικόπτερο, 6 ομάδες && chcp 65001 && java -Xmx6g -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar MainContainer custom 4 2 1 6"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
+      "label": "Run JADE 150x150 Large Resources (8-4-3-12)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "echo Μεγάλη διάταξη: 8 οχήματα, 4 αεροσκάφη, 3 ελικόπτερα, 12 ομάδες && chcp 65001 && java -Xmx10g -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar MainContainer custom 8 4 3 12"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
       "label": "Run JADE 150x150 Minimal Test",
       "type": "shell",
       "command": "cmd",
