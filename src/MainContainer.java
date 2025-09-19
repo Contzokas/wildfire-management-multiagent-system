@@ -4,6 +4,7 @@ import jade.core.ProfileImpl;
 import jade.wrapper.AgentContainer;
 import jade.wrapper.AgentController;
 import utils.GridManager;
+import gui.FireSimulationGUI;
 import java.util.Random;
 
 public class MainContainer {
@@ -28,6 +29,7 @@ public class MainContainer {
                 
             } catch (NumberFormatException e) {
                 System.err.println("❌ Invalid resource numbers, using defaults");
+                System.err.println("❌ Error details: " + e.getMessage());
             }
         }
         

@@ -4,18 +4,10 @@
     {
       "label": "Compile JADE agents with GUI",
       "type": "shell",
-      "command": "javac",
+      "command": "cmd",
       "args": [
-        "-encoding",
-        "UTF-8",
-        "-cp",
-        "lib/jade.jar",
-        "-d",
-        "bin",
-        "src/gui/*.java",
-        "src/agents/*.java",
-        "src/utils/*.java",
-        "src/MainContainer.java"
+        "/c",
+        "javac -encoding UTF-8 -cp lib/jade.jar -d bin src/utils/*.java && javac -encoding UTF-8 -cp lib/jade.jar -d bin src/gui/*.java && javac -encoding UTF-8 -cp \"lib/jade.jar;bin\" -d bin src/agents/*.java && javac -encoding UTF-8 -cp \"lib/jade.jar;bin\" -d bin src/MainContainer.java"
       ],
       "group": {
         "kind": "build",
@@ -23,12 +15,34 @@
       }
     },
     {
-      "label": "Run JADE 150x150 Custom Resources",
+      "label": "Run JADE 150x150 Custom Resources (Interactive)",
       "type": "shell",
       "command": "cmd",
       "args": [
         "/c",
-        "set /p TRUCKS=\"Πόσα πυροσβεστικά οχήματα θέλετε (1-20): \" && set /p AIRCRAFT=\"Πόσα αεροσκάφη θέλετε (1-10): \" && set /p HELICOPTERS=\"Πόσα ελικόπτερα θέλετε (1-10): \" && set /p CREWS=\"Πόσες επίγειες ομάδες θέλετε (1-50): \" && echo Δημιουργία με %TRUCKS% οχήματα, %AIRCRAFT% αεροσκάφη, %HELICOPTERS% ελικόπτερα, %CREWS% ομάδες && chcp 65001 && java -Xmx8g -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar MainContainer custom %TRUCKS% %AIRCRAFT% %HELICOPTERS% %CREWS%"
+        "run_custom_english.bat"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
+      "label": "Run JADE 150x150 Ultra Resources (20-10-8-50)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "echo Υπερμεγάλη διάταξη: 20 οχήματα, 10 αεροσκάφη, 8 ελικόπτερα, 50 ομάδες && chcp 65001 && java -Xmx16g -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar MainContainer custom 20 10 8 50"
+      ],
+      "group": "test",
+      "dependsOn": "Compile JADE agents with GUI"
+    },
+    {
+      "label": "Run JADE 150x150 Extreme Resources (15-8-5-30)",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "echo Μεγάλη διάταξη: 15 οχήματα, 8 αεροσκάφη, 5 ελικόπτερα, 30 ομάδες && chcp 65001 && java -Xmx12g -Dfile.encoding=UTF-8 -Dconsole.encoding=UTF-8 -Duser.language=el -Duser.country=GR -Dswing.systemlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -cp bin;lib/jade.jar MainContainer custom 15 8 5 30"
       ],
       "group": "test",
       "dependsOn": "Compile JADE agents with GUI"
