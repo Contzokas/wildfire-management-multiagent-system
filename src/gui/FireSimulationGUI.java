@@ -473,6 +473,9 @@ public class FireSimulationGUI extends JFrame {
         JMenuItem zoomOut = createEmojiMenuItem("ZOOM- Σμίκρυνση", KeyEvent.VK_MINUS, InputEvent.CTRL_DOWN_MASK);
         zoomOut.addActionListener(e -> zoomOut());
         
+        JMenuItem zoom100 = createEmojiMenuItem("💯 Zoom 100%", KeyEvent.VK_1, InputEvent.CTRL_DOWN_MASK);
+        zoom100.addActionListener(e -> setZoom100());
+        
         JMenuItem resetView = createEmojiMenuItem("HOME Επαναφορά Προβολής", KeyEvent.VK_0, InputEvent.CTRL_DOWN_MASK);
         resetView.addActionListener(e -> resetView());
         
@@ -481,6 +484,7 @@ public class FireSimulationGUI extends JFrame {
         
         viewMenu.add(zoomIn);
         viewMenu.add(zoomOut);
+        viewMenu.add(zoom100);
         viewMenu.addSeparator();
         viewMenu.add(resetView);
         viewMenu.add(centerView);
@@ -692,11 +696,14 @@ public class FireSimulationGUI extends JFrame {
         JButton resetBtn = createEmojiButton("HOME", "Επαναφορά Προβολής", INFO_COLOR);
         resetBtn.addActionListener(e -> resetView());
         
-        JButton fullscreenBtn = createEmojiButton("⛶", "Εναλλαγή Πλήρους Οθόνης", ACCENT_COLOR);
+        JButton fullscreenBtn = createEmojiButton("Fullscreen", "Εναλλαγή Πλήρους Οθόνης", ACCENT_COLOR);
         fullscreenBtn.addActionListener(e -> toggleFullscreen());
         
-        JButton fitScreenBtn = createEmojiButton("📐", "Προσαρμογή στην Οθόνη", WARNING_COLOR);
+        JButton fitScreenBtn = createEmojiButton("Windowed", "Προσαρμογή στην Οθόνη", WARNING_COLOR);
         fitScreenBtn.addActionListener(e -> calculateOptimalCellSize());
+        
+        JButton zoom100Btn = createEmojiButton("100%", "Zoom 100% (Πραγματικό Μέγεθος)", new Color(0x9C27B0));
+        zoom100Btn.addActionListener(e -> setZoom100());
         
         zoomLabel = createEmojiLabel("ZOOM Zoom: 100%", Font.BOLD, 12f);
         coordinatesLabel = createEmojiLabel("POS Συντεταγμένες: (0, 0)", Font.PLAIN, 12f);
@@ -706,6 +713,7 @@ public class FireSimulationGUI extends JFrame {
         toolbar.add(resetBtn);
         toolbar.add(fullscreenBtn);
         toolbar.add(fitScreenBtn);
+        toolbar.add(zoom100Btn);
         toolbar.add(Box.createHorizontalStrut(20));
         toolbar.add(zoomLabel);
         toolbar.add(Box.createHorizontalStrut(20));
@@ -1321,6 +1329,13 @@ public class FireSimulationGUI extends JFrame {
         cellSize = DEFAULT_CELL_SIZE;
         updateZoom();
         centerView();
+    }
+    
+    private void setZoom100() {
+        cellSize = DEFAULT_CELL_SIZE; // This gives exactly 100% zoom
+        updateZoom();
+        centerView();
+        System.out.println("🎯 Zoom set to exactly 100% (cellSize: " + cellSize + ")");
     }
     
     private void centerView() {
