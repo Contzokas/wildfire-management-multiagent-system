@@ -11,6 +11,9 @@ public class AircraftAgent extends Agent {
     private int currentWater = 1000;
     private FireSimulationGUI gui;
     
+    // Movement speed constants (in milliseconds per step)
+    private static final int AIRCRAFT_SPEED_DELAY = 50; // Fastest speed: ~300 km/h
+    
     @Override
     protected void setup() {
         // Αρχικοποίηση GUI
@@ -239,7 +242,7 @@ public class AircraftAgent extends Agent {
                 }
             });
             
-            doWait(150); // Faster movement for aircraft
+            doWait(AIRCRAFT_SPEED_DELAY); // Fastest movement for aircraft
         }
     }
 }

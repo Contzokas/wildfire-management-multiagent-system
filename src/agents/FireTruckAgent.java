@@ -9,6 +9,9 @@ public class FireTruckAgent extends Agent {
     private boolean busy = false;
     private FireSimulationGUI gui;
     
+    // Movement speed constants (in milliseconds per step)
+    private static final int TRUCK_SPEED_DELAY = 150; // Medium speed: ~60 km/h
+    
     @Override
     protected void setup() {
         // Αρχικοποίηση GUI
@@ -168,7 +171,7 @@ public class FireTruckAgent extends Agent {
         double deltaX = (double)(targetX - currentX) / steps;
         double deltaY = (double)(targetY - currentY) / steps;
         
-        // Animate movement
+        // Animate movement with truck speed
         for (int i = 0; i <= steps; i++) {
             final int newX = currentX + (int)(deltaX * i);
             final int newY = currentY + (int)(deltaY * i);
@@ -179,7 +182,7 @@ public class FireTruckAgent extends Agent {
                 }
             });
             
-            doWait(100); // Short delay for animation
+            doWait(TRUCK_SPEED_DELAY); // Medium speed for fire trucks
         }
     }
 }

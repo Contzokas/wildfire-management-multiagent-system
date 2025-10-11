@@ -4,6 +4,7 @@ import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.lang.acl.ACLMessage;
 import java.util.*;
+import gui.FireSimulationGUI; // Import for animated movement
 
 public class GroundCrewAgent extends Agent {
     private boolean deployed = false;
@@ -12,6 +13,9 @@ public class GroundCrewAgent extends Agent {
     private List<String> equipment = Arrays.asList("αξίνες", "τσάπες", "φτυάρια", "ψεκαστήρες");
     private String specialization; // "prevention", "suppression", "mop-up"
     // Αφαίρεση μη χρησιμοποιημένου field currentLocation
+    
+    // Movement speed constants (in milliseconds per step)
+    private static final int CREW_SPEED_DELAY = 300; // Slowest speed: ~5 km/h (walking)
     
     @Override
     protected void setup() {
@@ -67,7 +71,25 @@ public class GroundCrewAgent extends Agent {
         
         System.out.println(getLocalName() + ": Μετακίνηση προς " + location + 
                           " (Κούραση: " + fatigueLevel + "%)");
-        doWait(8000); // χρόνος μετακίνησης με τα πόδια
+        
+        // Parse coordinates from location string (e.g., "75,75" or "fire at 75,75")
+        int targetX = 75, targetY = 75; // Default location
+        try {
+            if (location.contains(",")) {
+                String coords = location;
+                if (location.contains(" at ")) {
+                    coords = location.substring(location.lastIndexOf(" at ") + 4);
+                }
+                String[] parts = coords.split(",");
+                targetX = Integer.parseInt(parts[0].trim());
+                targetY = Integer.parseInt(parts[1].trim());
+            }
+        } catch (NumberFormatException e) {
+            System.out.println(getLocalName() + ": Δεν μπόρεσα να αναλύσω τις συντεταγμένες, χρήση προεπιλογής (75,75)");
+        }
+        
+        // Use animated walking movement to location
+        walkToLocation(targetX, targetY);
         
         System.out.println(getLocalName() + ": Άφιξη στην περιοχή " + location);
         
@@ -207,5 +229,47 @@ public class GroundCrewAgent extends Agent {
         if (nx == 2 && ny == 4) return "tree11";
         if (nx == 3 && ny == 4) return "tree12";
         return null;
+    }
+    
+    private void walkToLocation(int targetX, int targetY) {
+        // Get GUI singleton instance
+        gui.FireSimulationGUI guiInstance = gui.FireSimulationGUI.getInstance();
+        if (guiInstance == null) {
+            System.out.println(getLocalName() + ": Δεν υπάρχει GUI - άμεση τηλεμεταφορά στην περιοχή (" + targetX + ", " + targetY + ")");
+            return;
+        }
+        
+        // Get Command Center position as starting point (crew base)
+        int currentX = gui.FireSimulationGUI.getCommandCenterX();
+        int currentY = gui.FireSimulationGUI.getCommandCenterY();
+        
+        System.out.println(getLocalName() + ": Πεζή μετακίνηση από κέντρο επιχειρήσεων (" + currentX + ", " + currentY + ") προς (" + targetX + ", " + targetY + ")");
+        
+        // Animated movement from Command Center to target (walking speed)
+        while (currentX != targetX || currentY != targetY) {
+            if (currentX < targetX) currentX++;
+            else if (currentX > targetX) currentX--;
+            
+            if (currentY < targetY) currentY++;
+            else if (currentY > targetY) currentY--;
+            
+            final int newX = currentX;
+            final int newY = currentY;
+            
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                if (guiInstance != null) {
+                    guiInstance.showAgentAt(newX, newY, "CREW", getLocalName());
+                }
+            });
+            
+            try {
+                Thread.sleep(CREW_SPEED_DELAY); // Slow walking movement
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        
+        System.out.println(getLocalName() + ": Άφιξη στον προορισμό (" + targetX + ", " + targetY + ") - Προετοιμασία για εργασία");
     }
 }

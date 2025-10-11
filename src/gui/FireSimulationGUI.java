@@ -179,8 +179,8 @@ public class FireSimulationGUI extends JFrame {
             e.printStackTrace();
         }
         
-        initializeGrid();
-        initializeGUI();
+        initializeGUI(); // Initialize GUI first
+        initializeGrid(); // Then initialize grid
         
         // Setup timers without automatic fires
         SwingUtilities.invokeLater(() -> {
@@ -1543,7 +1543,11 @@ public class FireSimulationGUI extends JFrame {
         cellStates.put(cmdKey, new CellState(CellType.COMMAND_CENTER));
         
         System.out.println("🏢 ΚΕΝΤΡΟ ΕΠΙΧΕΙΡΗΣΕΩΝ: Θέση (" + commandCenterX + "," + commandCenterY + ")");
-        addLog("🏢 Κέντρο Επιχειρήσεων αρχικοποιήθηκε στη θέση (" + commandCenterX + "," + commandCenterY + ")");
+        
+        // Only add to log if logArea is initialized
+        if (logArea != null) {
+            addLog("🏢 Κέντρο Επιχειρήσεων αρχικοποιήθηκε στη θέση (" + commandCenterX + "," + commandCenterY + ")");
+        }
         
         updateStatsDisplay();
     }
@@ -2063,6 +2067,11 @@ public class FireSimulationGUI extends JFrame {
     
     // Log methods
     public void addLog(String message) {
+        if (logArea == null) {
+            System.out.println("LOG: " + message); // Fallback to console
+            return;
+        }
+        
         String timestamp = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
         logArea.append("[" + timestamp + "] " + message + "\n");
         

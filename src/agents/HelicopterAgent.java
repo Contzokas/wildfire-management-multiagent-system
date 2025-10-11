@@ -11,6 +11,9 @@ public class HelicopterAgent extends Agent {
     private int currentWater = 500;
     private FireSimulationGUI gui;
     
+    // Movement speed constants (in milliseconds per step)
+    private static final int HELICOPTER_SPEED_DELAY = 80; // Fast speed: ~180 km/h
+    
     @Override
     protected void setup() {
         // Αρχικοποίηση GUI
@@ -57,16 +60,26 @@ public class HelicopterAgent extends Agent {
     private void deployToFire(String location) {
         deployed = true;
         
+        // Parse target coordinates
+        String[] coords = location.replace("(", "").replace(")", "").split(",");
+        int targetX = Integer.parseInt(coords[0]);
+        int targetY = Integer.parseInt(coords[1]);
+        
         String takeoffMessage = getLocalName() + ": 🚁 Απογείωση προς " + location;
         System.out.println(takeoffMessage);
         
         javax.swing.SwingUtilities.invokeLater(() -> {
             if (gui != null) {
                 gui.addLog("🚁 " + takeoffMessage);
+                // Start from command center helipad
+                int helipadX = FireSimulationGUI.getCommandCenterX();
+                int helipadY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 5);
+                gui.showAgentAt(helipadX, helipadY, "HELICOPTER", getLocalName());
             }
         });
         
-        doWait(3000); // γρηγορότερο από αεροπλάνο
+        // Fly to target location
+        flyToLocation(targetX, targetY);
         
         String arrivalMessage = getLocalName() + ": 🎯 Στοχευμένη ρίψη νερού στη θέση " + location;
         System.out.println(arrivalMessage);
@@ -88,7 +101,11 @@ public class HelicopterAgent extends Agent {
             }
         });
         
-        doWait(2000);
+        // Fly back to command center helipad
+        int helipadX = FireSimulationGUI.getCommandCenterX();
+        int helipadY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 5);
+        flyToLocation(helipadX, helipadY);
+        
         refillWater();
         deployed = false;
         
@@ -163,5 +180,32 @@ public class HelicopterAgent extends Agent {
         available.setContent("HELICOPTER_AVAILABLE");
         available.addReceiver(new jade.core.AID("firecontrol", jade.core.AID.ISLOCALNAME));
         send(available);
+    }
+    
+    private void flyToLocation(int targetX, int targetY) {
+        // Helicopter starts from command center helipad
+        int currentX = FireSimulationGUI.getCommandCenterX();
+        int currentY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 5); // Nearby helipad
+        
+        // Calculate flight path
+        int steps = Math.max(Math.abs(targetX - currentX), Math.abs(targetY - currentY));
+        if (steps == 0) return;
+        
+        double deltaX = (double)(targetX - currentX) / steps;
+        double deltaY = (double)(targetY - currentY) / steps;
+        
+        // Animate flight with helicopter speed
+        for (int i = 0; i <= steps; i++) {
+            final int newX = currentX + (int)(deltaX * i);
+            final int newY = currentY + (int)(deltaY * i);
+            
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                if (gui != null) {
+                    gui.showAgentAt(newX, newY, "HELICOPTER", getLocalName());
+                }
+            });
+            
+            doWait(HELICOPTER_SPEED_DELAY); // Fast movement for helicopters
+        }
     }
 }
