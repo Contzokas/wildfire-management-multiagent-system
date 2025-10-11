@@ -62,16 +62,26 @@ public class AircraftAgent extends Agent {
     private void deployToFire(String location) {
         deployed = true;
         
+        // Parse target coordinates
+        String[] coords = location.replace("(", "").replace(")", "").split(",");
+        int targetX = Integer.parseInt(coords[0]);
+        int targetY = Integer.parseInt(coords[1]);
+        
         String takeoffMessage = getLocalName() + ": Απογείωση! Πτήση προς " + location;
         System.out.println(takeoffMessage);
         
         javax.swing.SwingUtilities.invokeLater(() -> {
             if (gui != null) {
                 gui.addLog("✈️ " + takeoffMessage);
+                // Start from command center airfield
+                int airfieldX = FireSimulationGUI.getCommandCenterX();
+                int airfieldY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 10); // Slightly north of command center
+                gui.showAgentAt(airfieldX, airfieldY, "AIRCRAFT", getLocalName());
             }
         });
         
-        doWait(5000);
+        // Fly to target location
+        flyToLocation(targetX, targetY);
         
         String arrivalMessage = getLocalName() + ": Άφιξη στην περιοχή " + location;
         System.out.println(arrivalMessage);
@@ -93,7 +103,11 @@ public class AircraftAgent extends Agent {
             }
         });
         
-        doWait(5000);
+        // Fly back to base
+        int airfieldX = FireSimulationGUI.getCommandCenterX();
+        int airfieldY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 10);
+        flyToLocation(airfieldX, airfieldY);
+        
         deployed = false;
         
         if (currentWater < waterCapacity * 0.5) {
@@ -200,5 +214,32 @@ public class AircraftAgent extends Agent {
         if (nx == 2 && ny == 4) return "tree11";
         if (nx == 3 && ny == 4) return "tree12";
         return null;
+    }
+    
+    private void flyToLocation(int targetX, int targetY) {
+        // Aircraft start from airfield near command center
+        int currentX = FireSimulationGUI.getCommandCenterX();
+        int currentY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 10);
+        
+        // Calculate flight path
+        int steps = Math.max(Math.abs(targetX - currentX), Math.abs(targetY - currentY));
+        if (steps == 0) return;
+        
+        double deltaX = (double)(targetX - currentX) / steps;
+        double deltaY = (double)(targetY - currentY) / steps;
+        
+        // Animate flight
+        for (int i = 0; i <= steps; i++) {
+            final int newX = currentX + (int)(deltaX * i);
+            final int newY = currentY + (int)(deltaY * i);
+            
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                if (gui != null) {
+                    gui.showAgentAt(newX, newY, "AIRCRAFT", getLocalName());
+                }
+            });
+            
+            doWait(150); // Faster movement for aircraft
+        }
     }
 }

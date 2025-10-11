@@ -125,9 +125,13 @@ public class FireSimulationGUI extends JFrame {
     private static int initialHelicopters = 1;
     private static int initialCrews = 6;
     
+    // Command Center coordinates
+    private static int commandCenterX;
+    private static int commandCenterY;
+    
     // Cell State Classes
     enum CellType {
-        EMPTY, TREE, FIRE, BURNING_TREE, DESTROYED, WATER, FIREFIGHTER, AIRCRAFT, HELICOPTER, GROUND_CREW
+        EMPTY, TREE, FIRE, BURNING_TREE, DESTROYED, WATER, FIREFIGHTER, AIRCRAFT, HELICOPTER, GROUND_CREW, COMMAND_CENTER
     }
     
     static class CellState {
@@ -1086,11 +1090,11 @@ public class FireSimulationGUI extends JFrame {
             // If there are agents at this position, draw them
             if (!agentsAtPosition.isEmpty()) {
                 // Draw a semi-transparent overlay to indicate agent presence
-                g2d.setColor(new Color(0, 0, 0, 50));
+                g2d.setColor(new Color(255, 255, 255, 80)); // More visible white overlay
                 g2d.fillRect(pixelX + 1, pixelY + 1, cellWidth - 2, cellHeight - 2);
                 
-                // Draw agent icons
-                int iconSize = Math.max(6, Math.min(cellWidth, cellHeight) - 2);
+                // Draw agent icons with better visibility
+                int iconSize = Math.max(8, Math.min(cellWidth, cellHeight) - 2);
                 
                 for (int i = 0; i < Math.min(agentsAtPosition.size(), 4); i++) {
                     String agentName = agentsAtPosition.get(i);
@@ -1101,14 +1105,18 @@ public class FireSimulationGUI extends JFrame {
                         int offsetX = (i % 2) * (cellWidth / 2);
                         int offsetY = (i / 2) * (cellHeight / 2);
                         
-                        // Draw agent with type-specific color and icon
+                        // Draw agent with type-specific color and larger circle
                         g2d.setColor(getAgentColor(agentType));
-                        g2d.fillOval(pixelX + offsetX + 2, pixelY + offsetY + 2, iconSize, iconSize);
+                        g2d.fillOval(pixelX + offsetX + 1, pixelY + offsetY + 1, iconSize, iconSize);
                         
-                        // Draw agent icon
-                        if (iconSize >= 8) {
+                        // Draw black border for better visibility
+                        g2d.setColor(Color.BLACK);
+                        g2d.drawOval(pixelX + offsetX + 1, pixelY + offsetY + 1, iconSize, iconSize);
+                        
+                        // Draw agent icon if cell is large enough
+                        if (iconSize >= 10) {
                             g2d.setColor(Color.WHITE);
-                            g2d.setFont(emojiFont.deriveFont(Font.BOLD, iconSize - 2));
+                            g2d.setFont(primaryUIFont.deriveFont(Font.BOLD, Math.max(8, iconSize - 4)));
                             FontMetrics fm = g2d.getFontMetrics();
                             String agentIcon = getAgentIcon(agentType);
                             
@@ -1268,6 +1276,7 @@ public class FireSimulationGUI extends JFrame {
             case AIRCRAFT: return Color.BLUE;
             case HELICOPTER: return Color.MAGENTA;
             case GROUND_CREW: return Color.ORANGE;
+            case COMMAND_CENTER: return new Color(0, 100, 200); // Dark blue for command center
             default: return new Color(240, 240, 240);
         }
     }
@@ -1283,6 +1292,7 @@ public class FireSimulationGUI extends JFrame {
             case AIRCRAFT: return "A";     // Αντί για ✈️
             case HELICOPTER: return "H";   // Αντί για 🚁
             case GROUND_CREW: return "G";  // Αντί για 👥
+            case COMMAND_CENTER: return "C"; // Command Center
             default: return "";
         }
     }
@@ -1518,6 +1528,23 @@ public class FireSimulationGUI extends JFrame {
                 cellStates.put(x + "," + y, new CellState(CellType.EMPTY));
             }
         }
+        
+        // Initialize Command Center at random location or center
+        Random rand = new Random();
+        commandCenterX = GRID_SIZE / 2 + rand.nextInt(21) - 10; // Center ± 10 cells
+        commandCenterY = GRID_SIZE / 2 + rand.nextInt(21) - 10; // Center ± 10 cells
+        
+        // Ensure command center is within bounds
+        commandCenterX = Math.max(5, Math.min(GRID_SIZE - 5, commandCenterX));
+        commandCenterY = Math.max(5, Math.min(GRID_SIZE - 5, commandCenterY));
+        
+        // Set command center cell
+        String cmdKey = commandCenterX + "," + commandCenterY;
+        cellStates.put(cmdKey, new CellState(CellType.COMMAND_CENTER));
+        
+        System.out.println("🏢 ΚΕΝΤΡΟ ΕΠΙΧΕΙΡΗΣΕΩΝ: Θέση (" + commandCenterX + "," + commandCenterY + ")");
+        addLog("🏢 Κέντρο Επιχειρήσεων αρχικοποιήθηκε στη θέση (" + commandCenterX + "," + commandCenterY + ")");
+        
         updateStatsDisplay();
     }
 
@@ -1691,6 +1718,19 @@ public class FireSimulationGUI extends JFrame {
         if (gridPanel != null) {
             gridPanel.repaint();
         }
+    }
+    
+    // Command Center methods
+    public static int getCommandCenterX() {
+        return commandCenterX;
+    }
+    
+    public static int getCommandCenterY() {
+        return commandCenterY;
+    }
+    
+    public static String getCommandCenterLocation() {
+        return commandCenterX + "," + commandCenterY;
     }
     
     public Point getAgentPosition(String agentName) {
@@ -1943,9 +1983,7 @@ public class FireSimulationGUI extends JFrame {
     public void showAgentAt(int x, int y, String agentType, String agentName) {
         if (x < 1 || x > GRID_SIZE || y < 1 || y > GRID_SIZE) return;
         
-        String key = x + "," + y;
         CellType type;
-        
         switch (agentType.toUpperCase()) {
             case "TRUCK":
             case "FIRETRUCK": type = CellType.FIREFIGHTER; break;
@@ -1956,22 +1994,9 @@ public class FireSimulationGUI extends JFrame {
             default: return;
         }
         
-        CellState oldState = cellStates.get(key);
-        cellStates.put(key, new CellState(type));
+        // Use persistent agent tracking instead of temporary cell state
+        updateAgentPosition(agentName, x, y, type);
         addLog("📍 " + agentName + " στη θέση (" + x + "," + y + ")");
-        gridPanel.repaint();
-        
-        // Remove agent visualization after 3 seconds
-        Timer timer = new Timer(3000, e -> {
-            if (oldState != null) {
-                cellStates.put(key, oldState);
-            } else {
-                cellStates.put(key, new CellState(CellType.EMPTY));
-            }
-            gridPanel.repaint();
-        });
-        timer.setRepeats(false);
-        timer.start();
     }
     
     public void showAgentAt(int x, int y, String agentName) {

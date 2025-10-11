@@ -89,16 +89,26 @@ public class FireTruckAgent extends Agent {
     private void respondToFire(String location) {
         busy = true;
         
+        // Parse target coordinates from location string (format: "x,y")
+        String[] coords = location.split(",");
+        int targetX = Integer.parseInt(coords[0].trim());
+        int targetY = Integer.parseInt(coords[1].trim());
+        
         String moveMessage = getLocalName() + ": Μετακίνηση προς " + location;
         System.out.println(moveMessage);
         
         javax.swing.SwingUtilities.invokeLater(() -> {
             if (gui != null) {
                 gui.addLog("🚒 " + moveMessage);
+                // Start from command center base
+                int baseX = FireSimulationGUI.getCommandCenterX();
+                int baseY = FireSimulationGUI.getCommandCenterY();
+                gui.showTruckAt(baseX, baseY, getLocalName());
             }
         });
         
-        doWait(2000);
+        // Simulate movement to target location
+        moveToLocation(targetX, targetY);
         
         String arrivalMessage = getLocalName() + ": Άφιξη στη θέση " + location + " - Έναρξη κατάσβεσης";
         System.out.println(arrivalMessage);
@@ -144,5 +154,32 @@ public class FireTruckAgent extends Agent {
         available.setContent("TRUCK_AVAILABLE");
         available.addReceiver(new jade.core.AID("firecontrol", jade.core.AID.ISLOCALNAME));
         send(available);
+    }
+    
+    private void moveToLocation(int targetX, int targetY) {
+        // Get current position from command center base
+        int currentX = FireSimulationGUI.getCommandCenterX();
+        int currentY = FireSimulationGUI.getCommandCenterY();
+        
+        // Calculate movement steps
+        int steps = Math.max(Math.abs(targetX - currentX), Math.abs(targetY - currentY));
+        if (steps == 0) return;
+        
+        double deltaX = (double)(targetX - currentX) / steps;
+        double deltaY = (double)(targetY - currentY) / steps;
+        
+        // Animate movement
+        for (int i = 0; i <= steps; i++) {
+            final int newX = currentX + (int)(deltaX * i);
+            final int newY = currentY + (int)(deltaY * i);
+            
+            javax.swing.SwingUtilities.invokeLater(() -> {
+                if (gui != null) {
+                    gui.showTruckAt(newX, newY, getLocalName());
+                }
+            });
+            
+            doWait(100); // Short delay for animation
+        }
     }
 }
