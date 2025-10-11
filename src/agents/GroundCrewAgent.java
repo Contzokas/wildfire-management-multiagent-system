@@ -72,20 +72,23 @@ public class GroundCrewAgent extends Agent {
         System.out.println(getLocalName() + ": Μετακίνηση προς " + location + 
                           " (Κούραση: " + fatigueLevel + "%)");
         
-        // Parse coordinates from location string (e.g., "75,75" or "fire at 75,75")
+        // Parse coordinates from location string (e.g., "75,75" or "fire at 75,75" or "(75,75)")
         int targetX = 75, targetY = 75; // Default location
         try {
             if (location.contains(",")) {
                 String coords = location;
+                // Handle different formats: "fire at 75,75", "(75,75)", "75,75"
                 if (location.contains(" at ")) {
                     coords = location.substring(location.lastIndexOf(" at ") + 4);
                 }
+                // Remove parentheses if present
+                coords = coords.replace("(", "").replace(")", "").trim();
                 String[] parts = coords.split(",");
                 targetX = Integer.parseInt(parts[0].trim());
                 targetY = Integer.parseInt(parts[1].trim());
             }
-        } catch (NumberFormatException e) {
-            System.out.println(getLocalName() + ": Δεν μπόρεσα να αναλύσω τις συντεταγμένες, χρήση προεπιλογής (75,75)");
+        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+            System.out.println(getLocalName() + ": Δεν μπόρεσα να αναλύσω τις συντεταγμένες από '" + location + "', χρήση προεπιλογής (75,75)");
         }
         
         // Use animated walking movement to location
@@ -108,9 +111,14 @@ public class GroundCrewAgent extends Agent {
                 performGeneralWork(location);
         }
         
-        // Επιστροφή στη βάση
-        System.out.println(getLocalName() + ": Ολοκλήρωση εργασιών - Επιστροφή στη βάση");
-        doWait(8000);
+        // Επιστροφή στη βάση (Κέντρο Επιχειρήσεων)
+        System.out.println(getLocalName() + ": Ολοκλήρωση εργασιών - Επιστροφή στο κέντρο επιχειρήσεων");
+        
+        int baseX = gui.FireSimulationGUI.getCommandCenterX();
+        int baseY = gui.FireSimulationGUI.getCommandCenterY();
+        walkToLocation(baseX, baseY);
+        
+        System.out.println(getLocalName() + ": Άφιξη στο κέντρο επιχειρήσεων");
         
         deployed = false;
         fatigueLevel += 20; // αύξηση κούρασης
@@ -188,10 +196,10 @@ public class GroundCrewAgent extends Agent {
     }
     
     private void takeRest() {
-        System.out.println(getLocalName() + ": Ανάπαυση ομάδας...");
+        System.out.println(getLocalName() + ": Ανάπαυση ομάδας στο κέντρο επιχειρήσεων...");
         doWait(30000); // 30 δευτερόλεπτα ανάπαυση
         fatigueLevel = Math.max(0, fatigueLevel - 40);
-        System.out.println(getLocalName() + ": Ανάπαυση ολοκληρώθηκε - Κούραση: " + fatigueLevel + "%");
+        System.out.println(getLocalName() + ": Ανάπαυση ολοκληρώθηκε στο κέντρο επιχειρήσεων - Κούραση: " + fatigueLevel + "%");
     }
     
     private void provideSupportService(String supportType) {

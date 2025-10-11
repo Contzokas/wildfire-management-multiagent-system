@@ -31,6 +31,8 @@ public class MainContainer {
                 System.err.println("❌ Invalid resource numbers, using defaults");
                 System.err.println("❌ Error details: " + e.getMessage());
             }
+        } else {
+            System.out.println("🔧 Using default resource configuration");
         }
         
         // Set resource configuration in GUI before creating instance
@@ -104,7 +106,9 @@ public class MainContainer {
             AgentController aircraft = container.createNewAgent("aircraft" + i, 
                 "agents.AircraftAgent", null);
             aircraft.start();
-            
+        }
+        
+        for (int i = 1; i <= numHelicopters; i++) {
             AgentController helicopter = container.createNewAgent("helicopter" + i, 
                 "agents.HelicopterAgent", null);
             helicopter.start();

@@ -103,10 +103,6 @@ public class FireTruckAgent extends Agent {
         javax.swing.SwingUtilities.invokeLater(() -> {
             if (gui != null) {
                 gui.addLog("🚒 " + moveMessage);
-                // Start from command center base
-                int baseX = FireSimulationGUI.getCommandCenterX();
-                int baseY = FireSimulationGUI.getCommandCenterY();
-                gui.showTruckAt(baseX, baseY, getLocalName());
             }
         });
         
@@ -138,6 +134,29 @@ public class FireTruckAgent extends Agent {
         completed.setContent("EXTINGUISH_COMPLETED at " + location);
         completed.addReceiver(new jade.core.AID("firecontrol", jade.core.AID.ISLOCALNAME));
         send(completed);
+        
+        // Επιστροφή στο κέντρο επιχειρήσεων
+        String returnMessage = getLocalName() + ": Επιστροφή στο κέντρο επιχειρήσεων";
+        System.out.println(returnMessage);
+        
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            if (gui != null) {
+                gui.addLog("🔄 " + returnMessage);
+            }
+        });
+        
+        int baseX = FireSimulationGUI.getCommandCenterX();
+        int baseY = FireSimulationGUI.getCommandCenterY();
+        moveToLocation(baseX, baseY);
+        
+        String arrivedMessage = getLocalName() + ": Άφιξη στο κέντρο επιχειρήσεων";
+        System.out.println(arrivedMessage);
+        
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            if (gui != null) {
+                gui.addLog("🏢 " + arrivedMessage);
+            }
+        });
         
         busy = false;
         sendAvailabilityStatus();

@@ -71,10 +71,6 @@ public class HelicopterAgent extends Agent {
         javax.swing.SwingUtilities.invokeLater(() -> {
             if (gui != null) {
                 gui.addLog("🚁 " + takeoffMessage);
-                // Start from command center helipad
-                int helipadX = FireSimulationGUI.getCommandCenterX();
-                int helipadY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 5);
-                gui.showAgentAt(helipadX, helipadY, "HELICOPTER", getLocalName());
             }
         });
         

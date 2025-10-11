@@ -76,10 +76,6 @@ public class AircraftAgent extends Agent {
         javax.swing.SwingUtilities.invokeLater(() -> {
             if (gui != null) {
                 gui.addLog("✈️ " + takeoffMessage);
-                // Start from command center airfield
-                int airfieldX = FireSimulationGUI.getCommandCenterX();
-                int airfieldY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 10); // Slightly north of command center
-                gui.showAgentAt(airfieldX, airfieldY, "AIRCRAFT", getLocalName());
             }
         });
         
