@@ -140,6 +140,16 @@ public class HelicopterAgent extends Agent {
     }
     
     private void refillWater() {
+        // Show helicopter at helipad during refill
+        int helipadX = FireSimulationGUI.getCommandCenterX();
+        int helipadY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 5);
+        
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            if (gui != null) {
+                gui.showAgentAt(helipadX, helipadY, "HELICOPTER", getLocalName());
+            }
+        });
+        
         String refillMessage = getLocalName() + ": 🔄 Γρήγορος ανεφοδιασμός...";
         System.out.println(refillMessage);
         

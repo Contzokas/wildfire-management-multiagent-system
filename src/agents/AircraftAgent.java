@@ -161,6 +161,16 @@ public class AircraftAgent extends Agent {
     }
     
     private void refillWater() {
+        // Show aircraft at airfield during refill
+        int airfieldX = FireSimulationGUI.getCommandCenterX();
+        int airfieldY = Math.max(5, FireSimulationGUI.getCommandCenterY() - 10);
+        
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            if (gui != null) {
+                gui.showAgentAt(airfieldX, airfieldY, "AIRCRAFT", getLocalName());
+            }
+        });
+        
         String refillMessage = getLocalName() + ": Ανεφοδιασμός νερού...";
         System.out.println(refillMessage);
         
